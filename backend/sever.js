@@ -4,9 +4,11 @@ import express from "express";
 import cors from "cors";
 
 const app = express();
+
 const PORT = process.env.PORT || 3000;
 
 app.use(cors());
+
 app.use(express.json());
 
 app.get("/", function (req, res) {
@@ -27,10 +29,17 @@ app.post("/api/chat", function (req, res) {
     }
 
     res.json({
-        reply: "SUN SPY AI backend received: " + message
+        reply:
+            "SUN SPY AI backend received: " +
+            message
     });
 });
 
 app.listen(PORT, function () {
-    console.log("SUN SPY AI running on port " + PORT);
+
+    console.log(
+        "SUN SPY AI running on port " +
+        PORT
+    );
+
 });
