@@ -4,7 +4,8 @@
 
 document.addEventListener("DOMContentLoaded", function () {
 
-    const BACKEND_URL = "http://localhost:3000";
+    const BACKEND_URL =
+    "https://sun-spy-ai.onrender.com";
 
     const sidebar = document.getElementById("sidebar");
     const menuButton = document.getElementById("menuButton");
