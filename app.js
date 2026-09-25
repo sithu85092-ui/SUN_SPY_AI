@@ -4,13 +4,29 @@
 
 document.addEventListener("DOMContentLoaded", function () {
 
-    const BACKEND_URL =
-    "https://sun-spy-ai.onrender.com";
+    /* =========================
+       BACKEND
+    ========================= */
 
-    const sidebar = document.getElementById("sidebar");
-    const menuButton = document.getElementById("menuButton");
-    const headerTitle = document.getElementById("headerTitle");
-    const newChatButton = document.getElementById("newChat");
+    const BACKEND_URL =
+        "https://sun-spy-ai.onrender.com";
+
+
+    /* =========================
+       DOM ELEMENTS
+    ========================= */
+
+    const sidebar =
+        document.getElementById("sidebar");
+
+    const menuButton =
+        document.getElementById("menuButton");
+
+    const headerTitle =
+        document.getElementById("headerTitle");
+
+    const newChatButton =
+        document.getElementById("newChat");
 
     const messageInput =
         document.getElementById("messageInput");
@@ -31,21 +47,38 @@ document.addEventListener("DOMContentLoaded", function () {
         document.querySelectorAll(".page");
 
     const suggestions =
-        document.querySelectorAll(".suggestions button");
+        document.querySelectorAll(
+            ".suggestions button"
+        );
 
     const primaryButtons =
-        document.querySelectorAll(".primary-button");
+        document.querySelectorAll(
+            ".primary-button"
+        );
 
+
+    /* =========================
+       PAGE TITLES
+    ========================= */
 
     const pageTitles = {
+
         chat: "Chat",
+
         writer: "Writer",
+
         coder: "Coder",
+
         translate: "Translate",
+
         image: "Image",
+
         voice: "Voice",
+
         video: "Video",
+
         recap: "Video Recap"
+
     };
 
 
@@ -56,17 +89,28 @@ document.addEventListener("DOMContentLoaded", function () {
     function openPage(pageName) {
 
         pages.forEach(function (page) {
-            page.classList.remove("active");
+
+            page.classList.remove(
+                "active"
+            );
+
         });
 
+
         navItems.forEach(function (item) {
-            item.classList.remove("active");
+
+            item.classList.remove(
+                "active"
+            );
+
         });
+
 
         const selectedPage =
             document.getElementById(
                 "page-" + pageName
             );
+
 
         const selectedNav =
             document.querySelector(
@@ -75,27 +119,50 @@ document.addEventListener("DOMContentLoaded", function () {
                 '"]'
             );
 
+
         if (selectedPage) {
-            selectedPage.classList.add("active");
+
+            selectedPage.classList.add(
+                "active"
+            );
+
         }
 
+
         if (selectedNav) {
-            selectedNav.classList.add("active");
+
+            selectedNav.classList.add(
+                "active"
+            );
+
         }
+
 
         if (
             headerTitle &&
             pageTitles[pageName]
         ) {
+
             headerTitle.textContent =
                 pageTitles[pageName];
+
         }
+
 
         if (sidebar) {
-            sidebar.classList.remove("open");
+
+            sidebar.classList.remove(
+                "open"
+            );
+
         }
+
     }
 
+
+    /* =========================
+       NAVIGATION EVENTS
+    ========================= */
 
     navItems.forEach(function (item) {
 
@@ -108,11 +175,18 @@ document.addEventListener("DOMContentLoaded", function () {
                         "data-page"
                     );
 
+
                 if (pageName) {
-                    openPage(pageName);
+
+                    openPage(
+                        pageName
+                    );
+
                 }
+
             }
         );
+
     });
 
 
@@ -120,7 +194,10 @@ document.addEventListener("DOMContentLoaded", function () {
        MOBILE MENU
     ========================= */
 
-    if (menuButton && sidebar) {
+    if (
+        menuButton &&
+        sidebar
+    ) {
 
         menuButton.addEventListener(
             "click",
@@ -129,8 +206,10 @@ document.addEventListener("DOMContentLoaded", function () {
                 sidebar.classList.toggle(
                     "open"
                 );
+
             }
         );
+
     }
 
 
@@ -148,22 +227,35 @@ document.addEventListener("DOMContentLoaded", function () {
             "click",
             function () {
 
-                while (messages.firstChild) {
+                while (
+                    messages.firstChild
+                ) {
+
                     messages.removeChild(
                         messages.firstChild
                     );
+
                 }
 
-                messageInput.value = "";
+
+                messageInput.value =
+                    "";
+
 
                 messageInput.style.height =
                     "auto";
 
-                openPage("chat");
+
+                openPage(
+                    "chat"
+                );
+
 
                 messageInput.focus();
+
             }
         );
+
     }
 
 
@@ -171,14 +263,21 @@ document.addEventListener("DOMContentLoaded", function () {
        ADD MESSAGE
     ========================= */
 
-    function addMessage(type, text) {
+    function addMessage(
+        type,
+        text
+    ) {
 
         if (!messages) {
             return;
         }
 
+
         const message =
-            document.createElement("div");
+            document.createElement(
+                "div"
+            );
+
 
         message.className =
             "message " + type;
@@ -197,37 +296,52 @@ document.addEventListener("DOMContentLoaded", function () {
 
 
         const avatarElement =
-            document.createElement("div");
+            document.createElement(
+                "div"
+            );
+
 
         avatarElement.className =
             "message-avatar";
+
 
         avatarElement.textContent =
             avatar;
 
 
         const body =
-            document.createElement("div");
+            document.createElement(
+                "div"
+            );
+
 
         body.className =
             "message-body";
 
 
         const nameElement =
-            document.createElement("div");
+            document.createElement(
+                "div"
+            );
+
 
         nameElement.className =
             "message-name";
+
 
         nameElement.textContent =
             name;
 
 
         const textElement =
-            document.createElement("div");
+            document.createElement(
+                "div"
+            );
+
 
         textElement.className =
             "message-text";
+
 
         textElement.textContent =
             text;
@@ -237,6 +351,7 @@ document.addEventListener("DOMContentLoaded", function () {
             nameElement
         );
 
+
         body.appendChild(
             textElement
         );
@@ -245,6 +360,7 @@ document.addEventListener("DOMContentLoaded", function () {
         message.appendChild(
             avatarElement
         );
+
 
         message.appendChild(
             body
@@ -260,6 +376,138 @@ document.addEventListener("DOMContentLoaded", function () {
             behavior: "smooth",
             block: "end"
         });
+
+    }
+
+
+    /* =========================
+       LOADING MESSAGE
+    ========================= */
+
+    function addLoadingMessage() {
+
+        if (!messages) {
+            return null;
+        }
+
+
+        const message =
+            document.createElement(
+                "div"
+            );
+
+
+        message.className =
+            "message ai loading-message";
+
+
+        const avatar =
+            document.createElement(
+                "div"
+            );
+
+
+        avatar.className =
+            "message-avatar";
+
+
+        avatar.textContent =
+            "SS";
+
+
+        const body =
+            document.createElement(
+                "div"
+            );
+
+
+        body.className =
+            "message-body";
+
+
+        const name =
+            document.createElement(
+                "div"
+            );
+
+
+        name.className =
+            "message-name";
+
+
+        name.textContent =
+            "SUN SPY AI";
+
+
+        const text =
+            document.createElement(
+                "div"
+            );
+
+
+        text.className =
+            "message-text";
+
+
+        text.textContent =
+            "Thinking...";
+
+
+        body.appendChild(
+            name
+        );
+
+
+        body.appendChild(
+            text
+        );
+
+
+        message.appendChild(
+            avatar
+        );
+
+
+        message.appendChild(
+            body
+        );
+
+
+        messages.appendChild(
+            message
+        );
+
+
+        message.scrollIntoView({
+            behavior: "smooth",
+            block: "end"
+        });
+
+
+        return message;
+
+    }
+
+
+    /* =========================
+       REMOVE LOADING
+    ========================= */
+
+    function removeLoadingMessage(
+        element
+    ) {
+
+        if (
+            element &&
+            element.parentNode
+        ) {
+
+            element.parentNode.removeChild(
+                element
+            );
+
+        }
+
     }
 
 
@@ -267,12 +515,24 @@ document.addEventListener("DOMContentLoaded", function () {
        BACKEND CONNECTION
     ========================= */
 
-    async function sendToBackend(text) {
+    async function sendToBackend(
+        text
+    ) {
+
+        const url =
+            BACKEND_URL +
+            "/api/chat";
+
+
+        console.log(
+            "SUN SPY AI →",
+            url
+        );
+
 
         const response =
             await fetch(
-                BACKEND_URL +
-                "/api/chat",
+                url,
                 {
                     method: "POST",
 
@@ -288,10 +548,46 @@ document.addEventListener("DOMContentLoaded", function () {
             );
 
 
+        console.log(
+            "Backend status:",
+            response.status
+        );
+
+
         if (!response.ok) {
+
+            let errorText =
+                "HTTP " +
+                response.status;
+
+
+            try {
+
+                const errorData =
+                    await response.json();
+
+
+                if (
+                    errorData &&
+                    errorData.error
+                ) {
+
+                    errorText =
+                        errorData.error;
+
+                }
+
+            } catch (e) {
+
+                /* Ignore JSON error */
+
+            }
+
+
             throw new Error(
-                "Backend request failed"
+                errorText
             );
+
         }
 
 
@@ -299,14 +595,26 @@ document.addEventListener("DOMContentLoaded", function () {
             await response.json();
 
 
-        if (!data.reply) {
+        console.log(
+            "Backend response:",
+            data
+        );
+
+
+        if (
+            !data ||
+            !data.reply
+        ) {
+
             throw new Error(
                 "Invalid backend response"
             );
+
         }
 
 
         return data.reply;
+
     }
 
 
@@ -320,7 +628,9 @@ document.addEventListener("DOMContentLoaded", function () {
             !messageInput ||
             !sendButton
         ) {
+
             return;
+
         }
 
 
@@ -333,13 +643,17 @@ document.addEventListener("DOMContentLoaded", function () {
         }
 
 
+        /* User message */
+
         addMessage(
             "user",
             text
         );
 
 
-        messageInput.value = "";
+        messageInput.value =
+            "";
+
 
         messageInput.style.height =
             "auto";
@@ -353,12 +667,23 @@ document.addEventListener("DOMContentLoaded", function () {
             "…";
 
 
+        /* Loading */
+
+        const loadingMessage =
+            addLoadingMessage();
+
+
         try {
 
             const reply =
                 await sendToBackend(
                     text
                 );
+
+
+            removeLoadingMessage(
+                loadingMessage
+            );
 
 
             addMessage(
@@ -369,9 +694,36 @@ document.addEventListener("DOMContentLoaded", function () {
 
         } catch (error) {
 
+            console.error(
+                "SUN SPY AI ERROR:",
+                error
+            );
+
+
+            removeLoadingMessage(
+                loadingMessage
+            );
+
+
+            let errorMessage =
+                "Backend Error";
+
+
+            if (
+                error &&
+                error.message
+            ) {
+
+                errorMessage +=
+                    ": " +
+                    error.message;
+
+            }
+
+
             addMessage(
                 "ai",
-                "SUN SPY AI backend ကို ချိတ်ဆက်လို့ မရသေးပါ။ Backend server ကို စစ်ပေးပါ။"
+                errorMessage
             );
 
         } finally {
@@ -379,11 +731,15 @@ document.addEventListener("DOMContentLoaded", function () {
             sendButton.disabled =
                 false;
 
+
             sendButton.textContent =
                 "↑";
 
+
             messageInput.focus();
+
         }
+
     }
 
 
@@ -397,6 +753,7 @@ document.addEventListener("DOMContentLoaded", function () {
             "click",
             sendMessage
         );
+
     }
 
 
@@ -411,17 +768,23 @@ document.addEventListener("DOMContentLoaded", function () {
             function (event) {
 
                 if (
-                    event.key === "Enter" &&
+                    event.key ===
+                    "Enter" &&
                     !event.shiftKey
                 ) {
 
                     event.preventDefault();
 
+
                     sendMessage();
+
                 }
+
             }
         );
 
+
+        /* Auto resize */
 
         messageInput.addEventListener(
             "input",
@@ -437,8 +800,10 @@ document.addEventListener("DOMContentLoaded", function () {
                             .scrollHeight,
                         150
                     ) + "px";
+
             }
         );
+
     }
 
 
@@ -463,7 +828,9 @@ document.addEventListener("DOMContentLoaded", function () {
                         !messageInput ||
                         !prompt
                     ) {
+
                         return;
+
                     }
 
 
@@ -472,8 +839,17 @@ document.addEventListener("DOMContentLoaded", function () {
 
 
                     messageInput.focus();
+
+
+                    messageInput.dispatchEvent(
+                        new Event(
+                            "input"
+                        )
+                    );
+
                 }
             );
+
         }
     );
 
@@ -514,6 +890,7 @@ document.addEventListener("DOMContentLoaded", function () {
                         input.focus();
 
                         return;
+
                     }
 
 
@@ -542,8 +919,10 @@ document.addEventListener("DOMContentLoaded", function () {
                         },
                         800
                     );
+
                 }
             );
+
         }
     );
 
@@ -589,9 +968,68 @@ document.addEventListener("DOMContentLoaded", function () {
 
                     title.textContent =
                         file.name;
+
                 }
+
             }
         );
+
+    }
+
+
+    /* =========================
+       BACKEND HEALTH CHECK
+    ========================= */
+
+    async function checkBackend() {
+
+        try {
+
+            const response =
+                await fetch(
+                    BACKEND_URL,
+                    {
+                        method: "GET"
+                    }
+                );
+
+
+            if (!response.ok) {
+
+                console.warn(
+                    "Backend health check failed:",
+                    response.status
+                );
+
+                return false;
+
+            }
+
+
+            const data =
+                await response.json();
+
+
+            console.log(
+                "SUN SPY AI backend:",
+                data
+            );
+
+
+            return true;
+
+        } catch (error) {
+
+            console.error(
+                "Backend health check error:",
+                error
+            );
+
+
+            return false;
+
+        }
+
     }
 
 
@@ -599,6 +1037,13 @@ document.addEventListener("DOMContentLoaded", function () {
        START APP
     ========================= */
 
-    openPage("chat");
+    openPage(
+        "chat"
+    );
+
+
+    /* Check backend */
+
+    checkBackend();
 
 });
