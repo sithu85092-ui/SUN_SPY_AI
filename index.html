@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0b0b0c">
+
+  <title>SUN SPY AI</title>
+
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+  <div class="app">
+
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+
+      <div class="sidebar-top">
+
+        <div class="brand">
+          <div class="brand-mark">SS</div>
+
+          <div class="brand-text">
+            <strong>SUN SPY</strong>
+            <span>AI</span>
+          </div>
+        </div>
+
+        <button class="new-chat" id="newChat">
+          <span>+</span>
+          New chat
+        </button>
+
+        <nav class="navigation">
+
+          <button class="nav-item active" data-page="chat">
+            <span class="nav-icon">⌂</span>
+            Chat
+          </button>
+
+          <button class="nav-item" data-page="writer">
+            <span class="nav-icon">✎</span>
+            Writer
+          </button>
+
+          <button class="nav-item" data-page="coder">
+            <span class="nav-icon">&lt;/&gt;</span>
+            Coder
+          </button>
+
+          <button class="nav-item" data-page="translate">
+            <span class="nav-icon">A</span>
+            Translate
+          </button>
+
+          <button class="nav-item" data-page="image">
+            <span class="nav-icon">□</span>
+            Image
+          </button>
+
+          <button class="nav-item" data-page="voice">
+            <span class="nav-icon">◉</span>
+            Voice
+          </button>
+
+          <button class="nav-item" data-page="video">
+            <span class="nav-icon">▶</span>
+            Video
+          </button>
+
+          <button class="nav-item" data-page="recap">
+            <span class="nav-icon">▣</span>
+            Recap
+          </button>
+
+        </nav>
+
+      </div>
+
+      <div class="sidebar-bottom">
+
+        <button class="bottom-item">
+          Settings
+        </button>
+
+        <div class="engine-status">
+          <span></span>
+          AI Engine
+        </div>
+
+      </div>
+
+    </aside>
+
+
+    <!-- Main -->
+    <main class="main">
+
+      <!-- Header -->
+      <header class="header">
+
+        <button class="menu-button" id="menuButton">
+          ☰
+        </button>
+
+        <div class="header-title">
+          <strong id="headerTitle">Chat</strong>
+        </div>
+
+        <div class="header-right">
+
+          <button class="header-button">
+            ?
+          </button>
+
+          <div class="profile">
+            S
+          </div>
+
+        </div>
+
+      </header>
+
+
+      <!-- Pages -->
+      <section class="content">
+
+
+        <!-- CHAT -->
+        <section class="page active" id="page-chat">
+
+          <div class="chat-page">
+
+            <div class="welcome">
+
+              <div class="sun-logo">
+                SS
+              </div>
+
+              <h1>
+                How can I help you?
+              </h1>
+
+              <p>
+                Ask anything, create something, or start a project.
+              </p>
+
+            </div>
+
+
+            <div class="suggestions">
+
+              <button data-prompt="Help me write something">
+                <strong>Write</strong>
+                <span>Create text, scripts or captions</span>
+              </button>
+
+              <button data-prompt="Help me write code">
+                <strong>Code</strong>
+                <span>Build and debug code</span>
+              </button>
+
+              <button data-prompt="Translate this text">
+                <strong>Translate</strong>
+                <span>Translate between languages</span>
+              </button>
+
+              <button data-prompt="Give me a creative idea">
+                <strong>Create</strong>
+                <span>Generate creative ideas</span>
+              </button>
+
+            </div>
+
+
+            <div class="messages" id="messages">
+
+              <div class="empty-message">
+                <span>Start a conversation</span>
+              </div>
+
+            </div>
+
+
+            <div class="composer">
+
+              <textarea
+                id="messageInput"
+                rows="1"
+                placeholder="Message SUN SPY AI..."
+              ></textarea>
+
+              <div class="composer-bottom">
+
+                <div class="composer-tools">
+
+                  <button title="Attach">
+                    +
+                  </button>
+
+                </div>
+
+                <button
+                  class="send-button"
+                  id="sendButton"
+                  title="Send"
+                >
+                  ↑
+                </button>
+
+              </div>
+
+            </div>
+
+
+            <p class="disclaimer">
+              SUN SPY AI may make mistakes. Check important information.
+            </p>
+
+          </div>
+
+        </section>
+
+
+        <!-- WRITER -->
+        <section class="page" id="page-writer">
+
+          <div class="tool">
+
+            <div class="tool-header">
+              <h1>Writer</h1>
+              <p>Create articles, scripts, captions and more.</p>
+            </div>
+
+            <textarea
+              class="tool-input"
+              placeholder="What would you like to write?"
+            ></textarea>
+
+            <button class="primary-button">
+              Generate
+            </button>
+
+          </div>
+
+        </section>
+
+
+        <!-- CODER -->
+        <section class="page" id="page-coder">
+
+          <div class="tool">
+
+            <div class="tool-header">
+              <h1>Coder</h1>
+              <p>Build, explain and debug your code.</p>
+            </div>
+
+            <textarea
+              class="tool-input"
+              placeholder="Describe what you want to build..."
+            ></textarea>
+
+            <button class="primary-button">
+              Generate
+            </button>
+
+          </div>
+
+        </section>
+
+
+        <!-- TRANSLATE -->
+        <section class="page" id="page-translate">
+
+          <div class="tool">
+
+            <div class="tool-header">
+              <h1>Translate</h1>
+              <p>Translate text between languages.</p>
+            </div>
+
+            <textarea
+              class="tool-input"
+              placeholder="Enter text to translate..."
+            ></textarea>
+
+            <button class="primary-button">
+              Translate
+            </button>
+
+          </div>
+
+        </section>
+
+
+        <!-- IMAGE -->
+        <section class="page" id="page-image">
+
+          <div class="tool">
+
+            <div class="tool-header">
+              <h1>Image</h1>
+              <p>Create an image from a description.</p>
+            </div>
+
+            <textarea
+              class="tool-input"
+              placeholder="Describe the image..."
+            ></textarea>
+
+            <button class="primary-button">
+              Generate
+            </button>
+
+          </div>
+
+        </section>
+
+
+        <!-- VOICE -->
+        <section class="page" id="page-voice">
+
+          <div class="tool">
+
+            <div class="tool-header">
+              <h1>Voice</h1>
+              <p>Turn text into natural speech.</p>
+            </div>
+
+            <textarea
+              class="tool-input"
+              placeholder="Enter your text..."
+            ></textarea>
+
+            <button class="primary-button">
+              Generate
+            </button>
+
+          </div>
+
+        </section>
+
+
+        <!-- VIDEO -->
+        <section class="page" id="page-video">
+
+          <div class="tool">
+
+            <div class="tool-header">
+              <h1>Video</h1>
+              <p>Create video concepts and scenes.</p>
+            </div>
+
+            <textarea
+              class="tool-input"
+              placeholder="Describe your video..."
+            ></textarea>
+
+            <button class="primary-button">
+              Generate
+            </button>
+
+          </div>
+
+        </section>
+
+
+        <!-- RECAP -->
+        <section class="page" id="page-recap">
+
+          <div class="tool">
+
+            <div class="tool-header">
+              <h1>Video Recap</h1>
+              <p>Turn long videos into short stories.</p>
+            </div>
+
+            <label class="upload">
+
+              <span class="upload-icon">+</span>
+
+              <strong>Select a video</strong>
+
+              <small>
+                MP4, MOV or WEBM
+              </small>
+
+              <input
+                id="videoInput"
+                type="file"
+                accept="video/*"
+              >
+
+            </label>
+
+            <button class="primary-button">
+              Start Recap
+            </button>
+
+          </div>
+
+        </section>
+
+      </section>
+
+    </main>
+
+  </div>
+
+
+  <script src="app.js"></script>
+
+</body>
+</html>
