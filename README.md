@@ -1,34 +1,16 @@
-# SUN SPY AI v6 — World Class Mobile UI
+# SUN SPY AI v8 — Stable Chat
 
-## Frontend
-Deploy `index.html`, `style.css`, `app.js` to GitHub Pages.
+This version keeps the v7 ChatGPT-style mobile UI and fixes transient Gemini 503 handling.
 
-## Backend
-Render:
-- Root Directory: `backend`
-- Build Command: `npm install`
-- Start Command: `npm start`
-- Environment variable: `GEMINI_API_KEY`
+### Backend resilience
+- Retries transient 429/500/502/503/504 failures with exponential backoff.
+- Falls back from `gemini-3.8-flash` to `gemini-3.7-flash` when the primary is temporarily unavailable.
+- Frontend shows a friendly message instead of raw Gemini JSON errors.
 
-## Mobile behavior
-- Enter = newline
-- Ctrl/⌘ + Enter = send
-- Hamburger opens drawer
-- Tap scrim, close button, Escape, or swipe left to close
-- Swipe from the left edge to open
+### Render
+Root Directory: `backend`
+Build Command: `npm install`
+Start Command: `npm start`
+Environment Variable: `GEMINI_API_KEY`
 
-## Chat
-- Local chat history
-- New chat
-- Search saved chats
-- Image attachment preview
-- Stop generation
-- Fast / Smart
-- Voice input / speech
-- Voice conversation toggle
-
-## AI Code Agent
-AI can return a complete edited file for review. The user must review/apply/download it; production deployment is not silently overwritten.
-
-## Media
-The UI contains workflows for Image, Video, Music and Recap. Actual media generation requires the corresponding provider/API to be configured on the backend. The app never pretends a file was generated when no provider generated it.
+Never place the API key in GitHub Pages/frontend files.

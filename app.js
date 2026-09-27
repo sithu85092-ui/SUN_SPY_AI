@@ -166,7 +166,7 @@ document.addEventListener("DOMContentLoaded", () => {
     try{
       const body={message:text||"Please analyze the uploaded image.",mode,history:conversation.slice(-12).map(x=>({role:x.role,text:x.text})),image:image?{data:image.data.split(",")[1],mimeType:image.mimeType}:null};
       const res=await fetch(BACKEND_URL+"/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body),signal:abortController.signal});
-      const data=await res.json();if(!res.ok)throw new Error(data.details||data.error||"Backend error");
+      const data=await res.json().catch(()=>({}));if(!res.ok){const raw=String(data.details||data.error||"Backend error");const busy=/503|UNAVAILABLE|high demand|temporar/i.test(raw);throw new Error(busy?"AI service is busy right now. SUN SPY AI retried automatically — please try again in a moment.":raw)}
       typing.remove();if(data.uiCommand)applyUICommand(data.uiCommand);
       const aiText=data.reply||"No response.";conversation.push({role:"model",text:aiText});
       const el=addAI();await typeText(el,aiText);
