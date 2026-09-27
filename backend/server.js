@@ -9,6 +9,7 @@ const PORT = process.env.PORT || 3000;
 const API_KEY = process.env.GEMINI_API_KEY;
 const PRIMARY_MODEL = "gemini-3.8-flash";
 const FALLBACK_MODEL = "gemini-3.7-flash";
+const VIDEO_MODEL = "veo-3.1-generate-preview";
 
 app.use(cors());
 app.use(express.json({ limit: "20mb" }));
@@ -30,7 +31,7 @@ Support Burmese and English. If the user speaks Burmese, answer naturally in Bur
 
 The product is made by SI THU KYAW and is called SUN SPY AI. Keep the welcome identity concise and friendly.
 
-You can help plan and create prompts/workflows for text-to-image, image-to-image, text-to-video, photo-to-video, music, video recap, voice, translation, writing, coding and UI design. Actual media generation depends on configured provider APIs; never claim a provider generated a file when it did not.
+You can help plan and create prompts/workflows for text-to-image, image-to-image, text-to-video, photo-to-video, music, video recap, voice, translation, writing, coding and UI design. SUN SPY AI can generate real 8-second video jobs through the configured Google Veo provider. Never claim a file was generated unless the provider operation completed successfully.
 
 Help with general questions, programming, coding, writing, translation,
 technology, education, authorized cybersecurity education, and mature sexual
@@ -76,6 +77,12 @@ Important action truthfulness rules:
 - Never invent successful execution just because a command was requested.
 
 For the first interaction in a new chat, greet the user briefly and introduce yourself as SUN SPY AI, built by SI THU KYAW, then mention the main things you can help with in one compact paragraph.
+
+BACKGROUND COMMAND RULE: If an uploaded image is requested as the app background (for example "ဒီပုံကို background လုပ်", "use this as background", "set this photo as background"), this is NOT image editing. Emit [[UI:UI_SET_BACKGROUND]] and do not discuss replacing the photo background.
+
+VIDEO RULE: If the user asks to generate a video and the request reaches the Video Studio, help produce a concise generation prompt. The frontend/backend will perform the actual Veo job. Do not say a video was generated until the job reports done.
+
+CODE AGENT RULE: You may propose edits to the supplied project files. Return complete files only when requested by the Code Agent. Never claim that production files were changed unless the application actually wrote them.
 
 For UI requests, prefer actionable intent. If the user asks to add/remove a button or change layout, use the allow-listed UI command and explain that the change is applied locally or can be prepared in the Code Agent. Never claim to have edited a production file unless the frontend actually applied it.
 
@@ -358,6 +365,122 @@ Return ONLY the complete corrected file contents. Do not wrap it in Markdown fen
   } catch (error) {
     console.error("CODE EDIT ERROR", error);
     res.status(500).json({ error: "AI code edit error", details: error?.message || String(error) });
+  }
+});
+
+
+
+function cleanBase64Data(value) {
+  if (typeof value !== "string") return null;
+  return value.includes(",") ? value.split(",", 2)[1] : value;
+}
+
+function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
+
+app.post("/api/video/generate", async (req, res) => {
+  try {
+    if (!API_KEY || !ai) return res.status(500).json({ error: "GEMINI_API_KEY is missing" });
+    const prompt = typeof req.body?.prompt === "string" ? req.body.prompt.trim() : "";
+    const aspectRatio = ["16:9", "9:16"].includes(req.body?.aspectRatio) ? req.body.aspectRatio : "16:9";
+    const resolution = ["720p", "1080p"].includes(req.body?.resolution) ? req.body.resolution : "720p";
+    const image = req.body?.image;
+    if (!prompt) return res.status(400).json({ error: "Video prompt is required" });
+
+    const payload = {
+      instances: [{ prompt }],
+      parameters: { aspectRatio, resolution, numberOfVideos: 1 }
+    };
+    if (image?.data) {
+      payload.instances[0].image = {
+        bytesBase64Encoded: cleanBase64Data(image.data),
+        mimeType: image.mimeType || "image/jpeg"
+      };
+    }
+
+    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${VIDEO_MODEL}:predictLongRunning`, {
+      method: "POST",
+      headers: { "x-goog-api-key": API_KEY, "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) return res.status(r.status).json({ error: "Video generation request failed", details: data?.error?.message || JSON.stringify(data) });
+    res.json({ ok: true, operation: data.name, model: VIDEO_MODEL, aspectRatio, resolution });
+  } catch (error) {
+    console.error("VIDEO GENERATE ERROR", error);
+    res.status(500).json({ error: "Video generation error", details: error?.message || String(error) });
+  }
+});
+
+app.get("/api/video/status", async (req, res) => {
+  try {
+    if (!API_KEY) return res.status(500).json({ error: "GEMINI_API_KEY is missing" });
+    const name = String(req.query?.name || "");
+    if (!name || !/^operations\//.test(name)) return res.status(400).json({ error: "Invalid operation name" });
+    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/${name}`, { headers: { "x-goog-api-key": API_KEY } });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) return res.status(r.status).json({ error: "Video status failed", details: data?.error?.message || JSON.stringify(data) });
+    if (!data.done) return res.json({ done: false, operation: name });
+    if (data.error) return res.status(502).json({ done: true, error: data.error.message || "Video generation failed" });
+    const sample = data.response?.generateVideoResponse?.generatedSamples?.[0]?.video;
+    const uri = sample?.uri || null;
+    if (!uri) return res.status(502).json({ done: true, error: "Video completed without a video URI" });
+    res.json({ done: true, videoUrl: `/api/video/file?uri=${encodeURIComponent(uri)}` });
+  } catch (error) {
+    console.error("VIDEO STATUS ERROR", error);
+    res.status(500).json({ error: "Video status error", details: error?.message || String(error) });
+  }
+});
+
+app.get("/api/video/file", async (req, res) => {
+  try {
+    if (!API_KEY) return res.status(500).json({ error: "GEMINI_API_KEY is missing" });
+    const uri = String(req.query?.uri || "");
+    if (!uri.startsWith("https://generativelanguage.googleapis.com/")) return res.status(400).json({ error: "Invalid video URI" });
+    const r = await fetch(uri, { headers: { "x-goog-api-key": API_KEY } });
+    if (!r.ok) { const t = await r.text(); return res.status(r.status).send(t); }
+    res.setHeader("Content-Type", r.headers.get("content-type") || "video/mp4");
+    res.setHeader("Cache-Control", "private, max-age=3600");
+    if (r.body) {
+      for await (const chunk of r.body) res.write(chunk);
+      return res.end();
+    }
+    const buf = Buffer.from(await r.arrayBuffer());
+    res.end(buf);
+  } catch (error) {
+    console.error("VIDEO FILE ERROR", error);
+    if (!res.headersSent) res.status(500).json({ error: "Video download error", details: error?.message || String(error) });
+    else res.end();
+  }
+});
+
+app.post("/api/code-agent", async (req, res) => {
+  try {
+    if (!API_KEY || !ai) return res.status(500).json({ error: "GEMINI_API_KEY is missing" });
+    const instruction = String(req.body?.instruction || "").trim();
+    const files = req.body?.files && typeof req.body.files === "object" ? req.body.files : {};
+    const entries = Object.entries(files).filter(([name, code]) => typeof name === "string" && typeof code === "string");
+    if (!instruction || !entries.length) return res.status(400).json({ error: "instruction and project files are required" });
+    const total = entries.reduce((n,[,c]) => n + c.length, 0);
+    if (total > 240000) return res.status(413).json({ error: "Project is too large. Keep combined source under 240 KB." });
+    const project = entries.map(([name, code]) => `\n===== FILE: ${name} =====\n${code}`).join("\n");
+    const prompt = `You are SUN SPY AI Project Code Agent.
+User request:
+${instruction}
+
+Project files:${project}
+
+Return ONLY valid JSON with this shape: {"summary":"...","files":{"filename":"complete file contents"},"tests":["..."]}. Include only files that must change. Preserve existing features. Fix related syntax/runtime issues. Do not add secrets, malware, credential theft, destructive behavior, or unauthorized access. Do not use markdown fences.`;
+    const response = await ai.models.generateContent({
+      model: PRIMARY_MODEL, contents: prompt,
+      config: { responseMimeType: "application/json", systemInstruction: SYSTEM_INSTRUCTION + "\nYou are operating as a project code agent. Never claim files were written to production.", thinkingConfig: { thinkingLevel: "high" } }
+    });
+    let parsed;
+    try { parsed = JSON.parse(response.text?.trim() || "{}"); } catch { return res.status(502).json({ error: "Code Agent returned invalid JSON", raw: response.text || "" }); }
+    if (!parsed.files || typeof parsed.files !== "object") return res.status(502).json({ error: "Code Agent returned no files" });
+    res.json({ ok: true, ...parsed });
+  } catch (error) {
+    console.error("CODE AGENT ERROR", error);
+    res.status(500).json({ error: "AI Code Agent error", details: error?.message || String(error) });
   }
 });
 
