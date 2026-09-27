@@ -7,7 +7,8 @@ import { GoogleGenAI } from "@google/genai";
 const app = express();
 const PORT = process.env.PORT || 3000;
 const API_KEY = process.env.GEMINI_API_KEY;
-const MODEL = "gemini-3.8-flash";
+const PRIMARY_MODEL = "gemini-3.8-flash";
+const FALLBACK_MODEL = "gemini-3.7-flash";
 
 app.use(cors());
 app.use(express.json({ limit: "20mb" }));
@@ -127,7 +128,7 @@ app.get("/", (req, res) => {
     status: "online",
     version: "6.0.0",
     ai: Boolean(API_KEY),
-    model: MODEL
+    model: PRIMARY_MODEL
   });
 });
 
@@ -136,7 +137,7 @@ app.get("/api/health", (req, res) => {
     service: "SUN SPY AI",
     status: "ok",
     geminiConfigured: Boolean(API_KEY),
-    model: MODEL
+    model: PRIMARY_MODEL
   });
 });
 
@@ -164,16 +165,45 @@ app.post("/api/chat", async (req, res) => {
     console.log("User:", message);
     console.log("Mode:", mode, "Thinking:", thinkingLevel);
 
-    const response = await ai.models.generateContent({
-      model: MODEL,
-      contents: buildContents(message, history, image),
-      config: {
-        systemInstruction: SYSTEM_INSTRUCTION,
-        thinkingConfig: {
-          thinkingLevel
+    async function generateWithRetry(modelName, attempts) {
+      let lastError;
+      for (let attempt = 0; attempt < attempts; attempt++) {
+        try {
+          return await ai.models.generateContent({
+            model: modelName,
+            contents: buildContents(message, history, image),
+            config: {
+              systemInstruction: SYSTEM_INSTRUCTION,
+              thinkingConfig: { thinkingLevel }
+            }
+          });
+        } catch (err) {
+          lastError = err;
+          const status = Number(err?.status || err?.code || 0);
+          const messageText = String(err?.message || "");
+          const retryable = [429,500,502,503,504].includes(status) || /UNAVAILABLE|high demand|temporar/i.test(messageText);
+          if (!retryable || attempt === attempts - 1) throw err;
+          const delay = 700 * (2 ** attempt);
+          console.warn(`Temporary Gemini failure on ${modelName}; retrying in ${delay}ms`);
+          await new Promise(resolve => setTimeout(resolve, delay));
         }
       }
-    });
+      throw lastError;
+    }
+
+    let usedModel = PRIMARY_MODEL;
+    let response;
+    try {
+      response = await generateWithRetry(PRIMARY_MODEL, 3);
+    } catch (primaryError) {
+      const status = Number(primaryError?.status || primaryError?.code || 0);
+      const messageText = String(primaryError?.message || "");
+      const fallback = [429,500,502,503,504].includes(status) || /UNAVAILABLE|high demand|temporar/i.test(messageText);
+      if (!fallback) throw primaryError;
+      console.warn(`Primary model unavailable; switching to ${FALLBACK_MODEL}`);
+      usedModel = FALLBACK_MODEL;
+      response = await generateWithRetry(FALLBACK_MODEL, 2);
+    }
 
     const rawReply = response.text;
 
@@ -188,7 +218,7 @@ app.post("/api/chat", async (req, res) => {
     return res.json({
       reply: parsed.reply,
       uiCommand: parsed.uiCommand,
-      model: MODEL,
+      model: PRIMARY_MODEL,
       mode
     });
   } catch (error) {
@@ -230,7 +260,7 @@ Current code:
 
 Return ONLY the complete corrected file contents. Do not wrap it in Markdown fences. Preserve working functionality unless the request requires changing it. Fix syntax errors you introduce. Do not add secrets, API keys, malware, credential theft, destructive code, or unauthorized access logic.`;
     const response = await ai.models.generateContent({
-      model: MODEL,
+      model: PRIMARY_MODEL,
       contents: prompt,
       config: { systemInstruction: SYSTEM_INSTRUCTION + "\nYou can edit code, but return complete files for user review before application.", thinkingConfig: { thinkingLevel: mode === "smart" ? "high" : "low" } }
     });
@@ -255,7 +285,8 @@ app.listen(PORT, () => {
   console.log("================================");
   console.log("SUN SPY AI SERVER");
   console.log("Port:", PORT);
-  console.log("Model:", MODEL);
+  console.log("Primary model:", PRIMARY_MODEL);
+  console.log("Fallback model:", FALLBACK_MODEL);
   console.log("Gemini configured:", Boolean(API_KEY));
   console.log("================================");
 });
