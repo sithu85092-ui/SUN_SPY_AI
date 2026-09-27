@@ -162,7 +162,7 @@ document.addEventListener("DOMContentLoaded", () => {
     beginConversationUI();
     input.value="";clearComposer();addUser(text,image);
     conversation.push({role:"user",text:text||"Please analyze this image.",image:image||null});
-    const typing=showTyping();composerStatus.textContent="Thinking…";sendBtn.disabled=true;stopBtn.hidden=false;abortController=new AbortController();
+    const typing=showTyping();status.textContent="Thinking…";sendBtn.disabled=true;stopBtn.hidden=false;abortController=new AbortController();
     try{
       const body={message:text||"Please analyze the uploaded image.",mode,history:conversation.slice(-12).map(x=>({role:x.role,text:x.text})),image:image?{data:image.data.split(",")[1],mimeType:image.mimeType}:null};
       const res=await fetch(BACKEND_URL+"/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body),signal:abortController.signal});
@@ -172,10 +172,10 @@ document.addEventListener("DOMContentLoaded", () => {
       const el=addAI();await typeText(el,aiText);
       speakIfEnabled(aiText);
     }catch(e){typing.remove();if(e.name!=="AbortError"){const el=addAI();el.querySelector(".message-text").innerHTML=`<span class="error-text">${escapeHTML(e.message||"Something went wrong")}</span>`}else{const el=addAI();el.querySelector(".message-text").textContent="Generation stopped."}}
-    finally{abortController=null;stopBtn.hidden=true;sendBtn.disabled=false;composerStatus.textContent="Ready"}
+    finally{abortController=null;stopBtn.hidden=true;sendBtn.disabled=false;status.textContent="Ready"}
   }
   sendBtn?.addEventListener("click",sendMessage);
-  stopBtn?.addEventListener("click",()=>{typingCancelled=true;abortController?.abort();speechSynthesis?.cancel();composerStatus.textContent="Stopped";stopBtn.hidden=true});
+  stopBtn?.addEventListener("click",()=>{typingCancelled=true;abortController?.abort();speechSynthesis?.cancel();status.textContent="Stopped";stopBtn.hidden=true});
   // Keyboard contract: Enter = newline. Ctrl/Cmd + Enter = send.
   input?.addEventListener("keydown",e=>{
     if(e.key==="Enter" && (e.ctrlKey || e.metaKey)){
@@ -196,7 +196,29 @@ document.addEventListener("DOMContentLoaded", () => {
   }
   voiceSend?.addEventListener("click",()=>{if(recognition){recognition.stop();recognition=null;return}recognition=setupRecognition();recognition?.start()});
   function speakIfEnabled(text){if(!$("#autoVoice")?.checked||!window.speechSynthesis)return;speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(text);u.lang=/[\u1000-\u109F]/.test(text)?"my-MM":"en-US";speechSynthesis.speak(u)}
-  callBtn?.addEventListener("click",()=>{speaking=!speaking;callBtn.classList.toggle("active",speaking);if(speaking){toast("Voice conversation on");$("#autoVoice")&&( $("#autoVoice").checked=true );}else{speechSynthesis.cancel();toast("Voice conversation off")}});
+  callBtn?.addEventListener("click",()=>{
+    speaking=!speaking;
+    callBtn.classList.toggle("active",speaking);
+    if(speaking){
+      if(!recognition) recognition=setupRecognition();
+      if(recognition){
+        recognition.continuous=true;
+        recognition.interimResults=false;
+        recognition.onresult=e=>{
+          let finalText="";
+          for(const r of e.results){if(r.isFinal) finalText+=r[0].transcript+" ";}
+          if(finalText.trim()){input.value=finalText.trim();sendMessage();}
+        };
+        recognition.onend=()=>{if(speaking){try{recognition.start()}catch(_){}}};
+        try{recognition.start();toast("Live voice on — speak naturally")}catch(_){toast("Live voice could not start")}
+      }
+    }else{
+      try{recognition?.stop()}catch(_){ }
+      recognition=null;
+      speechSynthesis?.cancel();
+      toast("Live voice off");
+    }
+  });
 
   // Appearance and natural UI commands
   function applyAppearance(patch){const x={...getAppearance(),...patch};saveAppearance(x);document.documentElement.dataset.theme=x.theme;document.documentElement.style.setProperty("--accent",x.accent);document.documentElement.style.setProperty("--font-size",x.fontSize+"px");document.documentElement.dataset.density=x.density;if($("#themeSelect"))$("#themeSelect").value=x.theme;if($("#accentColor"))$("#accentColor").value=x.accent;if($("#fontSizeRange"))$("#fontSizeRange").value=x.fontSize;if($("#densitySelect"))$("#densitySelect").value=x.density}

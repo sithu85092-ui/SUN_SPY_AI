@@ -136,10 +136,10 @@
                 <span class="orb-ring"></span>
               </div>
               <div class="eyebrow">SUN SPY AI · BY SI THU KYAW</div>
-              <h1>မင်္ဂလာပါ 👋<br><span>What can I help you create?</span></h1>
-              <p>Chat, code, images, voice, video, music and creative projects — all in one workspace.</p>
+              <h1>မင်္ဂလာပါ 👋</h1>
+              <p class="welcome-intro"><strong>ကျွန်တော် SUN SPY AI ပါ။</strong> SI THU KYAW က ဖန်တီးထားတဲ့ AI assistant ဖြစ်ပြီး စာရေးခြင်း၊ Coding၊ ဘာသာပြန်ခြင်း၊ ပုံ၊ အသံ၊ Video၊ Music၊ Recap နဲ့ Project အမျိုးမျိုးမှာ ကူညီပေးနိုင်ပါတယ်။</p>
               <div class="welcome-chips">
-                <span>⚡ Fast</span><span>🧠 Smart</span><span>🎨 Creative</span><span>🛠️ Code Agent</span>
+                <span>⚡ Fast</span><span>🧠 Smart</span><span>🎨 Create</span><span>🛠️ Code Agent</span>
               </div>
             </div>
 
@@ -177,15 +177,6 @@
             </div>
 
 
-            <div class="quick-toolbar" aria-label="Quick creation tools">
-              <button type="button" data-open-tool="image"><span>✦</span> Image</button>
-              <button type="button" data-open-tool="video"><span>▶</span> Video</button>
-              <button type="button" data-open-tool="music"><span>♫</span> Music</button>
-              <button type="button" data-open-tool="recap"><span>▣</span> Recap</button>
-              <button type="button" data-open-tool="coder"><span>&lt;/&gt;</span> Code</button>
-              <button type="button" data-open-tool="voice"><span>◉</span> Voice</button>
-            </div>
-
             <div class="composer">
               <div class="composer-top">
                 <div class="mode-switch" role="group" aria-label="AI mode">
@@ -205,25 +196,22 @@
               ></textarea>
 
               <div class="composer-bottom">
-
                 <div class="composer-tools">
-                  <button id="attachButton" title="Attach image" type="button">+</button>
+                  <button id="attachButton" class="attach-button" title="Attach image" aria-label="Attach image" type="button">+</button>
                   <input id="imageInput" type="file" accept="image/*" hidden>
                 </div>
-
                 <div class="composer-actions">
-                  <button class="icon-button voice-send" id="voiceSendButton" title="Voice input" type="button">🎙</button>
-                  <button class="icon-button call-button" id="callButton" title="Voice conversation" type="button">☎</button>
-                  <button class="stop-button" id="stopButton" title="Stop generation" type="button" hidden>■ Stop</button>
-                  <button class="send-button" id="sendButton" title="Send">↑</button>
+                  <button class="icon-button voice-send" id="voiceSendButton" title="Voice message" aria-label="Voice message" type="button">🎙</button>
+                  <button class="icon-button call-button" id="callButton" title="Live voice" aria-label="Live voice conversation" type="button">◉</button>
+                  <button class="stop-button" id="stopButton" title="Stop generation" type="button" hidden>Stop</button>
+                  <button class="send-button" id="sendButton" title="Send" aria-label="Send">↑</button>
                 </div>
-
               </div>
 
             </div>
 
 
-            <div class="composer-hint">Enter = new line · Ctrl/⌘ + Enter = send · <label><input id="autoVoice" type="checkbox"> Auto voice</label></div>
+            <div class="composer-hint">Enter = new line · Ctrl/⌘ + Enter = send</div>
 
             <p class="disclaimer">
               SUN SPY AI may make mistakes. Check important information.
