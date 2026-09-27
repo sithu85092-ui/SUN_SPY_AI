@@ -1,479 +1,178 @@
 // @ts-nocheck
 "use strict";
 
-document.addEventListener("DOMContentLoaded", function () {
+document.addEventListener("DOMContentLoaded", () => {
   const BACKEND_URL = "https://sun-spy-ai.onrender.com";
-
   const $ = (s) => document.querySelector(s);
   const $$ = (s) => document.querySelectorAll(s);
 
-  const sidebar = $("#sidebar");
-  const menuButton = $("#menuButton");
-  const headerTitle = $("#headerTitle");
-  const newChatButton = $("#newChat");
-  const messageInput = $("#messageInput");
-  const sendButton = $("#sendButton");
-  const messages = $("#messages");
-  const settingsButton = $("#settingsButton");
-  const modeButtons = $$(".mode-button");
-  const composerStatus = $("#composerStatus");
-  const imageInput = $("#imageInput");
-  const attachButton = $("#attachButton");
+  const sidebar = $("#sidebar"), menuButton = $("#menuButton"), headerTitle = $("#headerTitle");
+  const messages = $("#messages"), input = $("#messageInput"), sendBtn = $("#sendButton");
+  const stopBtn = $("#stopButton"), newChat = $("#newChat"), imageInput = $("#imageInput");
+  const attachBtn = $("#attachButton"), preview = $("#attachmentPreview"), status = $("#composerStatus");
+  const voiceSend = $("#voiceSendButton"), callBtn = $("#callButton"), historyList = $("#historyList");
 
-  const pageTitles = {
-    chat: "Chat", writer: "Writer", coder: "Coder", translate: "Translate",
-    image: "Image", voice: "Voice", video: "Video", recap: "Video Recap",
-    settings: "Appearance"
-  };
-
-  let currentMode = localStorage.getItem("sunspy_mode") || "fast";
+  const pageTitles = {chat:"Chat",writer:"Writer",coder:"AI Coder",translate:"Translate",image:"Text to Image",voice:"Voice",video:"AI Video",recap:"Video Recap",music:"Music",settings:"Settings"};
+  let mode = localStorage.getItem("sunspy_mode") || "fast";
   let conversation = [];
-  let uiHistory = [];
+  let pendingImage = null;
+  let abortController = null;
+  let typingCancelled = false;
+  let recognition = null;
+  let speaking = false;
 
-  function openPage(name) {
-    $$(".page").forEach(p => p.classList.remove("active"));
-    $$(".nav-item").forEach(n => n.classList.remove("active"));
-    const page = $("#page-" + name);
-    const nav = document.querySelector('.nav-item[data-page="' + name + '"]');
-    if (page) page.classList.add("active");
-    if (nav) nav.classList.add("active");
-    if (headerTitle && pageTitles[name]) headerTitle.textContent = pageTitles[name];
+  const defaultAppearance = {theme:"dark", accent:"#7c5cff", fontSize:16, density:"comfortable"};
+  const getAppearance = () => JSON.parse(localStorage.getItem("sunspy_appearance") || JSON.stringify(defaultAppearance));
+  const saveAppearance = (x) => localStorage.setItem("sunspy_appearance", JSON.stringify(x));
+
+  function toast(text){
+    let t=$("#sunspyToast"); if(!t){t=document.createElement("div");t.id="sunspyToast";t.className="sunspy-toast";document.body.appendChild(t)}
+    t.textContent=text;t.classList.add("show");clearTimeout(t._timer);t._timer=setTimeout(()=>t.classList.remove("show"),2200);
+  }
+
+  function openPage(name){
+    $$(".page").forEach(p=>p.classList.remove("active"));
+    $$(".nav-item").forEach(n=>n.classList.remove("active"));
+    $("#page-"+name)?.classList.add("active");
+    document.querySelector(`.nav-item[data-page="${name}"]`)?.classList.add("active");
+    if(headerTitle) headerTitle.textContent=pageTitles[name]||name;
     sidebar?.classList.remove("open");
   }
+  $$(".nav-item").forEach(n=>n.addEventListener("click",()=>openPage(n.dataset.page)));
+  menuButton?.addEventListener("click",()=>sidebar?.classList.toggle("open"));
+  $("#settingsButton")?.addEventListener("click",()=>openPage("settings"));
+  $("#historyButton")?.addEventListener("click",()=>openPage("chat"));
 
-  $$(".nav-item").forEach(item => {
-    item.addEventListener("click", () => {
-      const name = item.getAttribute("data-page");
-      if (name) openPage(name);
-    });
-  });
+  function escapeHTML(v){return String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]))}
+  function formatText(v){let h=escapeHTML(v);h=h.replace(/```([\s\S]*?)```/g,(_,c)=>`<pre class="code-block"><code>${c.trim()}</code></pre>`);h=h.replace(/\*\*(.*?)\*\*/g,"<strong>$1</strong>").replace(/`([^`]+)`/g,"<code>$1</code>");return h;}
+  function scroll(){requestAnimationFrame(()=>messages?.scrollTo({top:messages.scrollHeight,behavior:"smooth"}))}
 
-  menuButton?.addEventListener("click", () => sidebar?.classList.toggle("open"));
-  settingsButton?.addEventListener("click", () => openPage("settings"));
-
-  function escapeHTML(value) {
-    return String(value).replace(/[&<>"']/g, c => ({
-      "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#039;"
-    }[c]));
+  function addUser(text,image){
+    const el=document.createElement("div");el.className="message user";
+    el.innerHTML=`<div class="message-body"><div class="message-text"></div></div>`;
+    el.querySelector(".message-text").textContent=text||"";
+    if(image){const w=document.createElement("div");w.className="message-attachment";w.innerHTML=`<img src="${image.data}" alt="${escapeHTML(image.name)}"><span>${escapeHTML(image.name)}</span>`;el.querySelector(".message-body").appendChild(w)}
+    messages.appendChild(el);scroll();return el;
   }
-
-  function formatAIText(value) {
-    // Safe lightweight markdown-ish rendering.
-    let html = escapeHTML(value);
-    html = html.replace(/```([\s\S]*?)```/g, (_, code) =>
-      '<pre class="code-block"><code>' + code.trim() + '</code></pre>'
-    );
-    html = html.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
-    html = html.replace(/`([^`]+)`/g, "<code>$1</code>");
-    return html;
+  function addAI(text=""){
+    const el=document.createElement("div");el.className="message ai";el.innerHTML=`<div class="message-avatar">SS</div><div class="message-body"><div class="message-name">SUN SPY AI</div><div class="message-text"></div></div>`;messages.appendChild(el);return el;
   }
+  function showTyping(){const el=document.createElement("div");el.className="message ai typing-message";el.innerHTML=`<div class="message-avatar">SS</div><div class="message-body"><div class="message-name">SUN SPY AI</div><div class="typing-dots"><i></i><i></i><i></i></div></div>`;messages.appendChild(el);scroll();return el}
 
-  function scrollChat() {
-    requestAnimationFrame(() => {
-      messages?.scrollTo({ top: messages.scrollHeight, behavior: "smooth" });
-    });
-  }
-
-  function addUserMessage(text) {
-    const el = document.createElement("div");
-    el.className = "message user";
-    el.innerHTML = `
-      <div class="message-body">
-        <div class="message-text"></div>
-      </div>`;
-    el.querySelector(".message-text").textContent = text;
-    messages.appendChild(el);
-    scrollChat();
-    return el;
-  }
-
-  function addAIMessage(text = "") {
-    const el = document.createElement("div");
-    el.className = "message ai";
-    el.innerHTML = `
-      <div class="message-avatar">SS</div>
-      <div class="message-body">
-        <div class="message-name">SUN SPY AI</div>
-        <div class="message-text"></div>
-      </div>`;
-    messages.appendChild(el);
-    const textEl = el.querySelector(".message-text");
-    textEl.innerHTML = formatAIText(text);
-    scrollChat();
-    return { el, textEl };
-  }
-
-  function addTypingIndicator() {
-    const el = document.createElement("div");
-    el.className = "message ai loading-message";
-    el.innerHTML = `
-      <div class="message-avatar">SS</div>
-      <div class="message-body">
-        <div class="message-name">SUN SPY AI</div>
-        <div class="message-text">
-          <span class="typing-dots"><i></i><i></i><i></i></span>
-        </div>
-      </div>`;
-    messages.appendChild(el);
-    scrollChat();
-    return el;
-  }
-
-  function typeNaturally(textEl, text, mode) {
-    return new Promise(resolve => {
-      const chars = Array.from(text);
-      let i = 0;
-      textEl.classList.add("typing-caret");
-
-      function step() {
-        if (i >= chars.length) {
-          textEl.classList.remove("typing-caret");
-          textEl.innerHTML = formatAIText(text);
-          scrollChat();
-          resolve();
-          return;
-        }
-
-        // Natural rhythm: slightly faster for spaces/punctuation.
-        const ch = chars[i++];
-        const existing = textEl.textContent || "";
-        textEl.textContent = existing + ch;
-
-        let delay = mode === "smart" ? 15 : 9;
-        if (ch === " " || ch === "\n") delay = 3;
-        if (/[,.!?၊။]/.test(ch)) delay += 22;
-
-        if (i % 18 === 0) scrollChat();
-        setTimeout(step, delay);
-      }
-      step();
-    });
-  }
-
-  function setMode(mode) {
-    currentMode = mode === "smart" ? "smart" : "fast";
-    localStorage.setItem("sunspy_mode", currentMode);
-    modeButtons.forEach(b => b.classList.toggle("active", b.dataset.mode === currentMode));
-    if (composerStatus) {
-      composerStatus.textContent = currentMode === "smart"
-        ? "Smart reasoning"
-        : "Fast response";
+  async function typeText(el,text){
+    typingCancelled=false; const target=el.querySelector(".message-text"); target.classList.add("typing-caret");
+    for(let i=0;i<text.length;i++){
+      if(typingCancelled) break;
+      target.innerHTML=formatText(text.slice(0,i+1));
+      if(i%3===0) scroll();
+      await new Promise(r=>setTimeout(r, mode==="smart"?7:4));
     }
-  }
-  modeButtons.forEach(b => b.addEventListener("click", () => setMode(b.dataset.mode)));
-  setMode(currentMode);
-
-  async function sendToBackend(text) {
-    const response = await fetch(BACKEND_URL + "/api/chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        message: text,
-        mode: currentMode,
-        history: conversation.slice(-12)
-      })
-    });
-
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      throw new Error(data.error || "HTTP " + response.status);
-    }
-    if (!data.reply) throw new Error("Invalid backend response");
-    return data;
+    target.classList.remove("typing-caret");scroll();
   }
 
-  async function sendMessage() {
-    const text = messageInput?.value.trim();
-    if (!text || !sendButton) return;
-
-    addUserMessage(text);
-    conversation.push({ role: "user", text });
-
-    messageInput.value = "";
-    messageInput.style.height = "auto";
-    sendButton.disabled = true;
-    sendButton.textContent = "…";
-    if (composerStatus) composerStatus.textContent = "Thinking…";
-
-    const loading = addTypingIndicator();
-
-    try {
-      const data = await sendToBackend(text);
-      loading.remove();
-
-      // Optional UI command emitted by the backend.
-      if (data.uiCommand) applyUICommand(data.uiCommand, true);
-
-      const ai = addAIMessage("");
-      await typeNaturally(ai.textEl, data.reply, currentMode);
-      conversation.push({ role: "model", text: data.reply });
-      if (composerStatus) {
-        composerStatus.textContent = currentMode === "smart" ? "Smart reasoning" : "Fast response";
-      }
-    } catch (err) {
-      loading.remove();
-      addAIMessage("Sorry — " + (err?.message || "Something went wrong."));
-      if (composerStatus) composerStatus.textContent = "Connection error";
-    } finally {
-      sendButton.disabled = false;
-      sendButton.textContent = "↑";
-      messageInput.focus();
-    }
-  }
-
-  sendButton?.addEventListener("click", sendMessage);
-
-  messageInput?.addEventListener("keydown", e => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage();
-    }
-  });
-
-  messageInput?.addEventListener("input", () => {
-    messageInput.style.height = "auto";
-    messageInput.style.height = Math.min(messageInput.scrollHeight, 150) + "px";
-  });
-
-  // Suggestions
-  $$(".suggestions button").forEach(btn => {
-    btn.addEventListener("click", () => {
-      messageInput.value = btn.dataset.prompt || "";
-      messageInput.focus();
-      messageInput.dispatchEvent(new Event("input"));
-    });
-  });
-
-  // New chat
-  newChatButton?.addEventListener("click", () => {
-    conversation = [];
-    if (messages) messages.innerHTML = "";
-    messageInput.value = "";
-    openPage("chat");
-    messageInput.focus();
-  });
-
-  // ---------------------------------------------------------
-  // UI CONTROL ENGINE
-  // ---------------------------------------------------------
-  const defaultAppearance = {
-    theme: "dark",
-    accent: "#7c5cff",
-    fontSize: 14,
-    density: "comfortable"
-  };
-
-  function readAppearance() {
-    try {
-      return JSON.parse(localStorage.getItem("sunspy_appearance")) || { ...defaultAppearance };
-    } catch {
-      return { ...defaultAppearance };
-    }
-  }
-
-  function saveAppearance(state) {
-    localStorage.setItem("sunspy_appearance", JSON.stringify(state));
-  }
-
-  function showToast(text) {
-    document.querySelector(".ui-change-toast")?.remove();
-    const toast = document.createElement("div");
-    toast.className = "ui-change-toast";
-    toast.textContent = text;
-    document.body.appendChild(toast);
-    setTimeout(() => toast.remove(), 2400);
-  }
-
-  function applyAppearance(state, announce = false) {
-    const root = document.documentElement;
-    document.body.classList.remove("light-theme", "midnight-theme");
-    if (state.theme === "light") document.body.classList.add("light-theme");
-    if (state.theme === "midnight") document.body.classList.add("midnight-theme");
-
-    root.style.setProperty("--accent", state.accent || defaultAppearance.accent);
-    root.style.setProperty("--ui-font-size", (state.fontSize || 14) + "px");
-
-    document.body.classList.remove("density-compact", "density-spacious");
-    if (state.density === "compact") document.body.classList.add("density-compact");
-    if (state.density === "spacious") document.body.classList.add("density-spacious");
-
-    const themeSelect = $("#themeSelect");
-    const accentColor = $("#accentColor");
-    const fontRange = $("#fontSizeRange");
-    const densitySelect = $("#densitySelect");
-    if (themeSelect) themeSelect.value = state.theme;
-    if (accentColor) accentColor.value = state.accent;
-    if (fontRange) fontRange.value = state.fontSize;
-    if (densitySelect) densitySelect.value = state.density;
-
-    saveAppearance(state);
-    if (announce) showToast("Appearance updated");
-  }
-
-  function updateAppearance(patch) {
-    const next = { ...readAppearance(), ...patch };
-    uiHistory.push(readAppearance());
-    if (uiHistory.length > 20) uiHistory.shift();
-    applyAppearance(next, true);
-  }
-
-  function applyUICommand(command, announce = false) {
-    if (!command || typeof command !== "object") return;
-    if (command.action === "theme") updateAppearance({ theme: command.value });
-    if (command.action === "accent") updateAppearance({ accent: command.value });
-    if (command.action === "font_size") updateAppearance({ fontSize: Number(command.value) });
-    if (command.action === "density") updateAppearance({ density: command.value });
-    if (command.action === "sidebar") {
-      sidebar?.classList.toggle("open", command.value === "open");
-      if (announce) showToast("Sidebar updated");
-    }
-  }
-
-  $("#themeSelect")?.addEventListener("change", e => updateAppearance({ theme: e.target.value }));
-  $("#accentColor")?.addEventListener("input", e => updateAppearance({ accent: e.target.value }));
-  $("#fontSizeRange")?.addEventListener("input", e => updateAppearance({ fontSize: Number(e.target.value) }));
-  $("#densitySelect")?.addEventListener("change", e => updateAppearance({ density: e.target.value }));
-
-  $("#resetAppearance")?.addEventListener("click", () => {
-    uiHistory.push(readAppearance());
-    applyAppearance({ ...defaultAppearance }, true);
-  });
-
-  // Basic natural-language UI controls. These are deliberately allow-listed.
-  function interpretLocalUICommand(text) {
-    const t = text.toLowerCase();
-
-    if (/(light mode|light theme|အလင်း|အဖြူရောင်).*(လုပ်|ပြောင်း|ထား)|change.*light/.test(t))
-      return { action: "theme", value: "light" };
-
-    if (/(dark mode|dark theme|အမှောင်).*(လုပ်|ပြောင်း|ထား)|change.*dark/.test(t))
-      return { action: "theme", value: "dark" };
-
-    if (/midnight|နက်ပြာ|အပြာနက်/.test(t))
-      return { action: "theme", value: "midnight" };
-
-    if (/purple|ခရမ်း|ခရမ်းရောင်/.test(t))
-      return { action: "accent", value: "#7c5cff" };
-
-    if (/blue|အပြာရောင်/.test(t))
-      return { action: "accent", value: "#3b82f6" };
-
-    if (/green|အစိမ်းရောင်/.test(t))
-      return { action: "accent", value: "#22c55e" };
-
-    if (/compact|သေးသေး|ကျစ်ကျစ်/.test(t))
-      return { action: "density", value: "compact" };
-
-    if (/spacious|ပိုကျယ်|အကွာအဝေးများ/.test(t))
-      return { action: "density", value: "spacious" };
-
-    if (/normal|ပုံမှန်/.test(t) && /(spacing|density|အကွာ)/.test(t))
-      return { action: "density", value: "comfortable" };
-
-    if (/sidebar.*(open|ဖွင့်)|sidebar.*(ဖွင့်)/.test(t))
-      return { action: "sidebar", value: "open" };
-
-    if (/sidebar.*(close|hide|ဖျောက်)|sidebar.*(ပိတ်|ဖျောက်)/.test(t))
-      return { action: "sidebar", value: "closed" };
-
-    return null;
-  }
-
-  // If the user asks for an obvious UI change, apply it before sending too.
-  // The AI still receives the request and can explain what changed.
-  const originalSendMessage = sendMessage;
-  window.sunSpyApplyUI = applyUICommand;
-  window.sunSpyUndoUI = function () {
-    const previous = uiHistory.pop();
-    if (previous) {
-      applyAppearance(previous, true);
-      showToast("Previous appearance restored");
-    } else {
-      showToast("Nothing to undo");
-    }
-  };
-
-  // Attach image button — stores the chosen image locally and makes it available
-  // as a background/logo choice in a future image-aware control flow.
-  attachButton?.addEventListener("click", () => imageInput?.click());
-  imageInput?.addEventListener("change", () => {
-    const file = imageInput.files?.[0];
-    if (!file) return;
-    if (!file.type.startsWith("image/")) return;
-    if (file.size > 5 * 1024 * 1024) {
-      showToast("Image must be 5 MB or smaller");
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = () => {
-      localStorage.setItem("sunspy_custom_image", reader.result);
-      showToast("Image saved for SUN SPY customization");
+  function clearComposer(){pendingImage=null;if(preview){preview.hidden=true;preview.innerHTML=""}if(imageInput)imageInput.value=""}
+  async function renderPreview(file){
+    if(!file.type.startsWith("image/")){toast("Please choose an image");return}
+    const url=URL.createObjectURL(file);
+    const img=new Image();
+    img.onload=()=>{
+      const max=1600, scale=Math.min(1,max/Math.max(img.width,img.height));
+      const c=document.createElement("canvas"); c.width=Math.max(1,Math.round(img.width*scale)); c.height=Math.max(1,Math.round(img.height*scale));
+      c.getContext("2d").drawImage(img,0,0,c.width,c.height);
+      const data=c.toDataURL("image/jpeg",.82); URL.revokeObjectURL(url);
+      pendingImage={data,name:file.name.replace(/\.[^.]+$/,".jpg"),mimeType:"image/jpeg"};
+      preview.hidden=false; preview.innerHTML=`<div class="attachment-chip"><img src="${data}"><div><b>${escapeHTML(file.name)}</b><small>${Math.round(data.length/1024)} KB · Ready to send</small></div><button type="button" id="removeAttachment">×</button></div>`;
+      $("#removeAttachment")?.addEventListener("click",clearComposer);
     };
-    reader.readAsDataURL(file);
-  });
+    img.onerror=()=>{URL.revokeObjectURL(url);toast("Could not read image")}; img.src=url;
+  }
+  attachBtn?.addEventListener("click",()=>imageInput?.click());
+  imageInput?.addEventListener("change",()=>{const f=imageInput.files?.[0];if(!f)return;if(f.size>10*1024*1024){toast("Image is larger than 10 MB");return}renderPreview(f)});
 
-  // Apply local UI command when a message is sent, then continue normally.
-  const sendRef = sendMessage;
-  window.sendSunSpyMessage = async function () {
-    const text = messageInput?.value.trim();
-    const command = text ? interpretLocalUICommand(text) : null;
-    if (command) {
-      uiHistory.push(readAppearance());
-      applyUICommand(command, false);
-      showToast("SUN SPY AI changed the interface");
-    }
-    return sendRef();
-  };
+  $$(".mode-button").forEach(b=>{b.classList.toggle("active",b.dataset.mode===mode);b.addEventListener("click",()=>{mode=b.dataset.mode;localStorage.setItem("sunspy_mode",mode);$$(".mode-button").forEach(x=>x.classList.toggle("active",x.dataset.mode===mode));toast(mode==="smart"?"Smart mode enabled":"Fast mode enabled")})});
 
-  // Replace click/enter handlers with command-aware wrapper.
-  sendButton?.removeEventListener("click", sendMessage);
-  sendButton?.addEventListener("click", window.sendSunSpyMessage);
-  messageInput?.addEventListener("keydown", e => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      window.sendSunSpyMessage();
-    }
-  });
+  function saveCurrentChat(){
+    if(!conversation.length)return;
+    const chats=JSON.parse(localStorage.getItem("sunspy_chats")||"[]");
+    const title=(conversation.find(x=>x.role==="user")?.text||"New chat").slice(0,60);
+    const item={id:Date.now(),title,createdAt:new Date().toISOString(),messages:conversation.slice(-60)};
+    chats.unshift(item);localStorage.setItem("sunspy_chats",JSON.stringify(chats.slice(0,50)));renderHistory();
+  }
+  function renderHistory(){if(!historyList)return;const chats=JSON.parse(localStorage.getItem("sunspy_chats")||"[]");historyList.innerHTML=chats.map(c=>`<button class="history-row" data-id="${c.id}"><b>${escapeHTML(c.title)}</b><small>${new Date(c.createdAt).toLocaleString()}</small></button>`).join("");historyList.querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>loadChat(Number(b.dataset.id))))}
+  function loadChat(id){const c=JSON.parse(localStorage.getItem("sunspy_chats")||"[]").find(x=>x.id===id);if(!c)return;conversation=c.messages||[];messages.innerHTML="";conversation.forEach(m=>m.role==="user"?addUser(m.text,m.image):addAIStatic(m.text));openPage("chat")}
+  function addAIStatic(text){const el=addAI();el.querySelector(".message-text").innerHTML=formatText(text);scroll()}
+  function clearMessages(){messages.innerHTML=""}
+  function startNewChat(){if(conversation.length)saveCurrentChat();conversation=[];clearMessages();clearComposer();welcomeGreeting(true);input?.focus();toast("New chat started")}
+  newChat?.addEventListener("click",startNewChat);
 
-  // Appearance defaults.
-  applyAppearance(readAppearance());
-
-  // Tool buttons: keep existing pages functional as UI placeholders.
-  $$(".primary-button").forEach(button => {
-    if (button.id === "resetAppearance") return;
-    button.addEventListener("click", () => {
-      const tool = button.closest(".tool");
-      const input = tool?.querySelector(".tool-input");
-      if (input && !input.value.trim()) {
-        input.focus();
-        return;
-      }
-      const old = button.textContent;
-      button.textContent = "Processing...";
-      button.disabled = true;
-      setTimeout(() => {
-        button.textContent = old;
-        button.disabled = false;
-      }, 800);
-    });
-  });
-
-  $("#videoInput")?.addEventListener("change", e => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const title = e.target.closest(".upload")?.querySelector("strong");
-    if (title) title.textContent = file.name;
-  });
-
-  async function checkBackend() {
-    try {
-      const r = await fetch(BACKEND_URL + "/", { method: "GET" });
-      return r.ok;
-    } catch {
-      return false;
-    }
+  function welcomeGreeting(reset=false){
+    if(!reset && conversation.length)return;
+    const el=addAI();el.querySelector(".message-text").innerHTML=`<div class="welcome-greeting"><b>မင်္ဂလာပါ 👋</b><p>ကျွန်တော် <strong>SUN SPY AI</strong> ပါ — <strong>SI THU KYAW</strong> က တည်ဆောက်ထားတဲ့ AI assistant ဖြစ်ပါတယ်။</p><p>Chat, Writer, Coder, Translate, Image, Voice, Video, Recap နဲ့ UI/code editing စတာတွေမှာ ကူညီပေးနိုင်ပါတယ်။</p><p>လိုချင်တာကို တိုက်ရိုက်ပြောပါ။ ဥပမာ <em>“Background ကိုပြောင်းပေး”</em>၊ <em>“ဒီ code ကိုပြင်ပေး”</em>၊ <em>“ဒီပုံကိုရှင်းပြ”</em> လို့ပြောနိုင်ပါတယ်။</p></div>`;
   }
 
-  openPage("chat");
-  checkBackend();
+  async function sendMessage(){
+    const text=input?.value.trim()||"";
+    if(!text && !pendingImage)return;
+    if(abortController){toast("Already generating — Stop ကိုနှိပ်ပါ");return}
+    const image=pendingImage;
+    input.value="";clearComposer();addUser(text,image);
+    conversation.push({role:"user",text:text||"Please analyze this image.",image:image||null});
+    const typing=showTyping();composerStatus.textContent="Thinking…";sendBtn.disabled=true;stopBtn.hidden=false;abortController=new AbortController();
+    try{
+      const body={message:text||"Please analyze the uploaded image.",mode,history:conversation.slice(-12).map(x=>({role:x.role,text:x.text})),image:image?{data:image.data.split(",")[1],mimeType:image.mimeType}:null};
+      const res=await fetch(BACKEND_URL+"/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body),signal:abortController.signal});
+      const data=await res.json();if(!res.ok)throw new Error(data.details||data.error||"Backend error");
+      typing.remove();if(data.uiCommand)applyUICommand(data.uiCommand);
+      const aiText=data.reply||"No response.";conversation.push({role:"model",text:aiText});
+      const el=addAI();await typeText(el,aiText);
+      speakIfEnabled(aiText);
+    }catch(e){typing.remove();if(e.name!=="AbortError"){const el=addAI();el.querySelector(".message-text").innerHTML=`<span class="error-text">${escapeHTML(e.message||"Something went wrong")}</span>`}else{const el=addAI();el.querySelector(".message-text").textContent="Generation stopped."}}
+    finally{abortController=null;stopBtn.hidden=true;sendBtn.disabled=false;composerStatus.textContent="Ready"}
+  }
+  sendBtn?.addEventListener("click",sendMessage);
+  stopBtn?.addEventListener("click",()=>{typingCancelled=true;abortController?.abort();speechSynthesis?.cancel();composerStatus.textContent="Stopped";stopBtn.hidden=true});
+  // Enter creates a new line. Ctrl/Cmd+Enter sends.
+  input?.addEventListener("keydown",e=>{if(e.key==="Enter"&&(e.ctrlKey||e.metaKey)){e.preventDefault();sendMessage()}});
+
+  // Voice input / voice send / voice conversation
+  function setupRecognition(){
+    const SR=window.SpeechRecognition||window.webkitSpeechRecognition;if(!SR){toast("Voice input is not supported on this browser");return null}
+    const r=new SR();r.lang=document.documentElement.lang==="my"?"my-MM":"en-US";r.interimResults=true;r.continuous=false;
+    r.onstart=()=>toast("Listening…");r.onresult=e=>{let s="";for(const x of e.results)s+=x[0].transcript;input.value=s};r.onerror=()=>toast("Voice input stopped");return r;
+  }
+  voiceSend?.addEventListener("click",()=>{if(recognition){recognition.stop();recognition=null;return}recognition=setupRecognition();recognition?.start()});
+  function speakIfEnabled(text){if(!$("#autoVoice")?.checked||!window.speechSynthesis)return;speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(text);u.lang=/[\u1000-\u109F]/.test(text)?"my-MM":"en-US";speechSynthesis.speak(u)}
+  callBtn?.addEventListener("click",()=>{speaking=!speaking;callBtn.classList.toggle("active",speaking);if(speaking){toast("Voice conversation on");$("#autoVoice")&&( $("#autoVoice").checked=true );}else{speechSynthesis.cancel();toast("Voice conversation off")}});
+
+  // Appearance and natural UI commands
+  function applyAppearance(patch){const x={...getAppearance(),...patch};saveAppearance(x);document.documentElement.dataset.theme=x.theme;document.documentElement.style.setProperty("--accent",x.accent);document.documentElement.style.setProperty("--font-size",x.fontSize+"px");document.documentElement.dataset.density=x.density;if($("#themeSelect"))$("#themeSelect").value=x.theme;if($("#accentColor"))$("#accentColor").value=x.accent;if($("#fontSizeRange"))$("#fontSizeRange").value=x.fontSize;if($("#densitySelect"))$("#densitySelect").value=x.density}
+  function applyUICommand(c){if(!c)return;if(c.action==="theme")applyAppearance({theme:c.value});if(c.action==="accent")applyAppearance({accent:c.value});if(c.action==="density")applyAppearance({density:c.value});if(c.action==="sidebar")sidebar?.classList.toggle("open",c.value==="open");if(c.action==="font_size")applyAppearance({fontSize:Number(c.value)})}
+  $("#themeSelect")?.addEventListener("change",e=>applyAppearance({theme:e.target.value}));$("#accentColor")?.addEventListener("input",e=>applyAppearance({accent:e.target.value}));$("#fontSizeRange")?.addEventListener("input",e=>applyAppearance({fontSize:Number(e.target.value)}));$("#densitySelect")?.addEventListener("change",e=>applyAppearance({density:e.target.value}));$("#resetAppearance")?.addEventListener("click",()=>applyAppearance(defaultAppearance));
+
+  // Background image/video, kept local unless the user supplies an online URL.
+  $("#backgroundUrlButton")?.addEventListener("click",()=>{const u=$("#backgroundUrl")?.value.trim();if(u){document.body.style.setProperty("--user-bg",`url("${u.replace(/"/g,'')}")`);document.body.classList.add("has-user-bg");localStorage.setItem("sunspy_bg_url",u);toast("Online background applied")}});
+  $("#backgroundFile")?.addEventListener("change",e=>{const f=e.target.files?.[0];if(!f)return;if(f.size>15*1024*1024){toast("Background video/image must be under 15 MB");return}const u=URL.createObjectURL(f);if(f.type.startsWith("video/")){let v=$("#bgVideo");if(!v){v=document.createElement("video");v.id="bgVideo";v.muted=true;v.autoplay=true;v.loop=true;v.playsInline=true;v.className="background-video";document.body.prepend(v)}v.src=u;document.body.classList.add("has-bg-video")}else{document.body.style.setProperty("--user-bg",`url("${u}")`);document.body.classList.add("has-user-bg")}});
+  const oldBg=localStorage.getItem("sunspy_bg_url");if(oldBg){document.body.style.setProperty("--user-bg",`url("${oldBg}")`);document.body.classList.add("has-user-bg")}
+
+  // Feature cards: route users to tools and keep generation providers configurable.
+  $$("[data-open-tool]").forEach(b=>b.addEventListener("click",()=>openPage(b.dataset.openTool)));
+  $$(".suggestions button").forEach(b=>b.addEventListener("click",()=>{input.value=b.dataset.prompt||"";input.focus()}));
+
+  // AI Coder agent: review -> edit -> apply -> download. Never writes to server automatically.
+  const codeInput=$("#codeEditor");
+  $("#aiEditCode")?.addEventListener("click",async()=>{
+    const instruction=$("#codeInstruction")?.value.trim();const fileName=$("#codeFileName")?.value||"app.js";const code=codeInput?.value||"";
+    if(!instruction||!code){toast("Code နဲ့ instruction နှစ်ခုလုံးထည့်ပါ");return}
+    const b=$("#aiEditCode");b.disabled=true;b.textContent="AI editing…";
+    try{const r=await fetch(BACKEND_URL+"/api/code-edit",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({fileName,instruction,code,mode})});const d=await r.json();if(!r.ok)throw new Error(d.details||d.error);codeInput.value=d.code;$("#codePreview")&&( $("#codePreview").textContent=d.code );toast("AI code edit ready — review before Apply")}catch(e){toast(e.message||"Code edit failed")}finally{b.disabled=false;b.textContent="✨ AI Edit Code"}
+  });
+  $("#applyCode")?.addEventListener("click",()=>{if(!codeInput)return;const p=$("#codePreview")?.textContent||"";if(!p){toast("No AI code to apply");return}codeInput.value=p;$("#codeResult")?.setAttribute("hidden","");toast("Applied to editor — review and save/download")});
+  $("#downloadCode")?.addEventListener("click",()=>{const name=$("#codeFileName")?.value||"app.js",blob=new Blob([codeInput?.value||""],{type:"text/plain"}),a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=name;a.click();URL.revokeObjectURL(a.href)});
+  $("#clearCode")?.addEventListener("click",()=>{if(codeInput)codeInput.value=""});
+
+  // Local history controls
+  $("#clearHistory")?.addEventListener("click",()=>{localStorage.removeItem("sunspy_chats");renderHistory();toast("Chat history cleared")});
+  $("#exportHistory")?.addEventListener("click",()=>{const b=new Blob([localStorage.getItem("sunspy_chats")||"[]"],{type:"application/json"}),a=document.createElement("a");a.href=URL.createObjectURL(b);a.download="sunspy-chat-history.json";a.click();URL.revokeObjectURL(a.href)});
+
+  applyAppearance(getAppearance());renderHistory();welcomeGreeting();
 });

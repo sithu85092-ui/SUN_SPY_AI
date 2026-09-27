@@ -1167,3 +1167,43 @@ body {
     bottom: 4px;
   }
 }
+
+
+/* SUN SPY AI v4 — image attachments + coder */
+.attachment-preview { display:flex; align-items:center; gap:10px; margin:0 0 10px; padding:8px; border:1px solid rgba(255,255,255,.10); border-radius:14px; background:rgba(255,255,255,.035); }
+.attachment-preview img { width:72px; height:72px; object-fit:cover; border-radius:10px; }
+.attachment-meta { flex:1; min-width:0; }
+.attachment-name { font-size:13px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.attachment-size { font-size:11px; opacity:.6; margin-top:3px; }
+.attachment-remove { border:0; background:transparent; color:inherit; opacity:.65; font-size:20px; cursor:pointer; padding:5px 8px; }
+.message.user .message-attachment { margin-top:8px; }
+.message-attachment img { max-width:min(320px,80vw); max-height:280px; display:block; border-radius:14px; border:1px solid rgba(255,255,255,.10); }
+.secondary-button { border:1px solid rgba(255,255,255,.12); background:rgba(255,255,255,.05); color:inherit; border-radius:10px; padding:10px 14px; cursor:pointer; }
+.coder-grid { display:grid; grid-template-columns:180px 1fr; gap:12px; margin-bottom:14px; }
+.field-label { display:block; font-size:12px; opacity:.7; margin:0 0 6px; }
+.code-select,.code-request { width:100%; box-sizing:border-box; background:rgba(255,255,255,.045); color:inherit; border:1px solid rgba(255,255,255,.12); border-radius:10px; padding:11px 12px; outline:none; }
+.code-editor { width:100%; min-height:360px; box-sizing:border-box; resize:vertical; font:13px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace; background:#0a0a0d; color:#e9e9ee; border:1px solid rgba(255,255,255,.12); border-radius:12px; padding:14px; outline:none; }
+.coder-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }
+.code-result { margin-top:16px; border:1px solid rgba(124,92,255,.25); border-radius:14px; padding:12px; background:rgba(124,92,255,.05); }
+.code-result-head { display:flex; justify-content:space-between; gap:10px; margin-bottom:10px; font-size:13px; }
+.code-preview { max-height:380px; overflow:auto; white-space:pre-wrap; font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; background:#08080b; border-radius:10px; padding:12px; }
+@media (max-width:700px){ .coder-grid{grid-template-columns:1fr;} .code-editor{min-height:280px;} .attachment-preview img{width:58px;height:58px;} }
+
+/* SUN SPY AI v5 professional layer */
+:root{--accent:#7c5cff;--font-size:16px;--user-bg:none}
+body{font-size:var(--font-size);background-image:var(--user-bg);background-size:cover;background-position:center;background-attachment:fixed}
+body.has-user-bg:before{content:"";position:fixed;inset:0;background:rgba(5,6,10,.72);z-index:-1;backdrop-filter:blur(2px)}
+.background-video{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;z-index:-2;opacity:.5;pointer-events:none}
+.stop-button{border:1px solid rgba(255,255,255,.16);background:#2a2024;color:#fff;border-radius:12px;padding:9px 12px;cursor:pointer}
+.stop-button[hidden]{display:none}
+.icon-button{border:0;background:transparent;color:inherit;font-size:18px;padding:8px;cursor:pointer;border-radius:10px}.icon-button:hover{background:rgba(255,255,255,.08)}
+.call-button.active{background:rgba(34,197,94,.18);color:#4ade80}
+.composer-hint{font-size:11px;opacity:.55;padding:5px 10px}.composer-hint label{margin-left:8px}
+.composer-hint input{accent-color:var(--accent)}
+.message-attachment{margin-top:10px;display:flex;flex-direction:column;gap:5px;max-width:min(360px,80vw)}
+.message-attachment img{display:block;width:auto;max-width:100%;max-height:300px;border-radius:14px;object-fit:cover}.message-attachment span{font-size:11px;opacity:.6}
+.welcome-greeting{line-height:1.65}.welcome-greeting p{margin:.35rem 0}
+.sidebar-history{padding:12px;border-top:1px solid rgba(255,255,255,.06);max-height:210px;overflow:auto}.history-head{display:flex;justify-content:space-between;align-items:center;font-size:12px;opacity:.8;margin-bottom:6px}.history-head button{border:0;background:transparent;color:var(--accent);cursor:pointer}.history-row{width:100%;display:flex;flex-direction:column;text-align:left;background:transparent;color:inherit;border:0;border-radius:9px;padding:8px;cursor:pointer}.history-row:hover{background:rgba(255,255,255,.06)}.history-row b{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.history-row small{font-size:10px;opacity:.45;margin-top:2px}
+.feature-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:16px 0}.feature-grid button{padding:16px;border-radius:14px;border:1px solid rgba(255,255,255,.09);background:rgba(255,255,255,.035);color:inherit;text-align:left;cursor:pointer}.feature-grid button:hover{border-color:var(--accent);transform:translateY(-1px)}.feature-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.feature-row select,.background-row input{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);color:inherit;border-radius:10px;padding:10px}.provider-note{font-size:12px;opacity:.55;margin-top:14px}.background-row{display:flex;gap:8px;flex-wrap:wrap}.background-row input{min-width:220px;flex:1}.file-label{display:inline-flex;align-items:center;cursor:pointer}.settings-section{margin-top:20px;padding-top:18px;border-top:1px solid rgba(255,255,255,.08)}.settings-section h3{margin:0 0 5px}.settings-section p{opacity:.55;font-size:12px}
+.sunspy-toast{position:fixed;left:50%;bottom:28px;transform:translate(-50%,20px);opacity:0;pointer-events:none;background:#18181b;color:#fff;border:1px solid rgba(255,255,255,.12);padding:10px 15px;border-radius:12px;z-index:9999;transition:.22s}.sunspy-toast.show{opacity:1;transform:translate(-50%,0)}
+@media(max-width:700px){.feature-grid{grid-template-columns:1fr 1fr}.composer-hint{font-size:10px}.message-attachment img{max-height:240px}.sidebar-history{display:none}}

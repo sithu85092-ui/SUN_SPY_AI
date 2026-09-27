@@ -70,15 +70,14 @@
             Video
           </button>
 
-          <button class="nav-item" data-page="recap">
-            <span class="nav-icon">▣</span>
-            Recap
-          </button>
+          <button class="nav-item" data-page="recap"><span class="nav-icon">▣</span>Recap</button>
+          <button class="nav-item" data-page="music"><span class="nav-icon">♫</span>Music</button>
 
         </nav>
 
       </div>
 
+      <div class="sidebar-history" id="historyPanel"><div class="history-head"><strong>Recent chats</strong><button id="historyButton" type="button">Open</button></div><div id="historyList"></div></div>
       <div class="sidebar-bottom">
 
         <button class="bottom-item" id="settingsButton" type="button">
@@ -193,6 +192,8 @@
                 <span class="composer-status" id="composerStatus">Ready</span>
               </div>
 
+              <div id="attachmentPreview" class="attachment-preview" hidden></div>
+
               <textarea
                 id="messageInput"
                 rows="1"
@@ -207,18 +208,19 @@
                   <input id="imageInput" type="file" accept="image/*" hidden>
                 </div>
 
-                <button
-                  class="send-button"
-                  id="sendButton"
-                  title="Send"
-                >
-                  ↑
-                </button>
+                <div class="composer-actions">
+                  <button class="icon-button voice-send" id="voiceSendButton" title="Voice input" type="button">🎙</button>
+                  <button class="icon-button call-button" id="callButton" title="Voice conversation" type="button">☎</button>
+                  <button class="stop-button" id="stopButton" title="Stop generation" type="button" hidden>■ Stop</button>
+                  <button class="send-button" id="sendButton" title="Send">↑</button>
+                </div>
 
               </div>
 
             </div>
 
+
+            <div class="composer-hint">Enter = new line · Ctrl/⌘ + Enter = send · <label><input id="autoVoice" type="checkbox"> Auto voice</label></div>
 
             <p class="disclaimer">
               SUN SPY AI may make mistakes. Check important information.
@@ -252,28 +254,48 @@
 
         </section>
 
-
         <!-- CODER -->
         <section class="page" id="page-coder">
-
-          <div class="tool">
-
+          <div class="tool coder-tool">
             <div class="tool-header">
-              <h1>Coder</h1>
-              <p>Build, explain and debug your code.</p>
+              <h1>AI Coder</h1>
+              <p>Give SUN SPY AI your code and tell it what to change. Review and apply the result.</p>
             </div>
 
-            <textarea
-              class="tool-input"
-              placeholder="Describe what you want to build..."
-            ></textarea>
+            <div class="coder-grid">
+              <div>
+                <label class="field-label">File</label>
+                <select id="codeFileName" class="code-select">
+                  <option value="index.html">index.html</option>
+                  <option value="style.css">style.css</option>
+                  <option value="app.js">app.js</option>
+                  <option value="server.js">server.js</option>
+                </select>
+              </div>
+              <div>
+                <label class="field-label">What should AI change?</label>
+                <input id="codeInstruction" class="code-request" placeholder="ဥပမာ — ပုံ upload preview ကိုပြင်ပြီး remove button ထည့်ပါ" />
+              </div>
+            </div>
 
-            <button class="primary-button">
-              Generate
-            </button>
+            <label class="field-label">Current code</label>
+            <textarea id="codeEditor" class="code-editor" spellcheck="false" placeholder="Paste the code you want SUN SPY AI to edit..."></textarea>
 
+            <div class="coder-actions">
+              <button id="aiEditCode" class="primary-button" type="button">✨ AI Edit Code</button>
+              <button id="downloadCode" class="secondary-button" type="button">Download File</button>
+              <button id="clearCode" class="secondary-button" type="button">Clear</button>
+            </div>
+
+            <div id="codeResult" class="code-result" hidden>
+              <div class="code-result-head">
+                <strong>AI code change</strong>
+                <span id="codeStatus">Ready to apply</span>
+              </div>
+              <pre id="codePreview" class="code-preview"></pre>
+              <button id="applyCode" class="primary-button" type="button">Apply to Editor</button>
+            </div>
           </div>
-
         </section>
 
 
@@ -354,25 +376,26 @@
 
           <div class="tool">
 
-            <div class="tool-header">
-              <h1>Video</h1>
-              <p>Create video concepts and scenes.</p>
-            </div>
-
-            <textarea
-              class="tool-input"
-              placeholder="Describe your video..."
-            ></textarea>
-
-            <button class="primary-button">
-              Generate
-            </button>
+            <div class="tool-header"><h1>AI Video Studio</h1><p>Text → Video, Photo → Video, effects, animation and up to 2-minute project planning.</p></div>
+            <div class="feature-grid"><button data-open-tool="video" type="button">Text → Video</button><button data-open-tool="video" type="button">Photo → Video</button><button data-open-tool="recap" type="button">Recap → Video</button><button data-open-tool="video" type="button">Cinematic Effects</button></div>
+            <textarea class="tool-input" id="videoPrompt" placeholder="Describe your video…"></textarea>
+            <div class="feature-row"><select id="videoDuration"><option>10 sec</option><option>30 sec</option><option>60 sec</option><option selected>120 sec</option></select><select id="videoRatio"><option>9:16</option><option>16:9</option><option>1:1</option></select><button class="primary-button" data-open-tool="chat" type="button">Plan with AI</button></div>
+            <p class="provider-note">Generation providers are modular: connect a compatible image/video API in the backend. The UI is ready for provider adapters.</p>
 
           </div>
 
         </section>
 
 
+
+        <!-- MUSIC -->
+        <section class="page" id="page-music">
+          <div class="tool feature-tool">
+            <div class="tool-header"><h1>Music</h1><p>Create music concepts, lyrics, structure and production prompts. Connect a music provider later for audio generation.</p></div>
+            <textarea class="tool-input" id="musicPrompt" placeholder="Describe your music: mood, genre, instruments, tempo..."></textarea>
+            <div class="feature-row"><select id="musicLength"><option>30 sec</option><option>60 sec</option><option>120 sec</option></select><button class="primary-button" data-open-tool="chat" type="button">Ask SUN SPY AI</button></div>
+          </div>
+        </section>
 
         <!-- SETTINGS / UI CUSTOMIZER -->
         <section class="page" id="page-settings">
@@ -409,9 +432,9 @@
               </label>
             </div>
 
-            <div class="appearance-actions">
-              <button class="primary-button" id="resetAppearance" type="button">Restore default</button>
-            </div>
+            <div class="appearance-actions"><button class="primary-button" id="resetAppearance" type="button">Restore default</button></div>
+            <div class="settings-section"><h3>Background</h3><p>Use a remote image URL or a small local image/video. Avoid huge files on mobile.</p><div class="background-row"><input id="backgroundUrl" placeholder="Paste online image URL…"><button id="backgroundUrlButton" class="secondary-button" type="button">Apply URL</button><label class="secondary-button file-label">Choose image/video<input id="backgroundFile" type="file" accept="image/*,video/*" hidden></label></div></div>
+            <div class="settings-section"><h3>Chat history</h3><p>Chats stay in this phone/browser storage. Export or clear them anytime.</p><div class="background-row"><button id="exportHistory" class="secondary-button" type="button">Export history</button><button id="clearHistory" class="secondary-button" type="button">Clear history</button></div></div>
           </div>
         </section>
 
