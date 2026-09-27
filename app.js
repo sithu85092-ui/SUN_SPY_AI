@@ -174,7 +174,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const body={
         message:text||"Please analyze the uploaded image.",
         mode,
-        history:conversation.slice(-12).map(x=>({role:x.role,text:x.text})),
+        history:conversation.slice(-13,-1).map(x=>({role:x.role,text:x.text})),
         image:image?{data:image.data.split(",")[1],mimeType:image.mimeType}:null
       };
 
@@ -202,6 +202,23 @@ document.addEventListener("DOMContentLoaded", () => {
       const reader=res.body.getReader();
       const decoder=new TextDecoder();
       let buffer="";
+      let typedSource="";
+      let typedShown="";
+      let typingActive=false;
+      const typeQueue=async()=>{
+        if(typingActive)return;
+        typingActive=true;
+        while(typedShown.length<typedSource.length){
+          const remaining=typedSource.length-typedShown.length;
+          const step=remaining>80?3:remaining>25?2:1;
+          typedShown=typedSource.slice(0,typedShown.length+step);
+          target.innerHTML=formatText(typedShown);
+          scroll();
+          await new Promise(r=>setTimeout(r,8));
+        }
+        typingActive=false;
+      };
+      const flushTyping=async()=>{ while(typedShown.length<typedSource.length){ await typeQueue(); } };
 
       const handleEvent=raw=>{
         const lines=raw.split(/\r?\n/);
@@ -215,9 +232,10 @@ document.addEventListener("DOMContentLoaded", () => {
         }else if(evt.type==="ui"){
           applyUICommand(evt.command,image);
         }else if(evt.type==="delta"){
-          streamedText+=String(evt.text||"");
-          target.innerHTML=formatText(streamedText);
-          scroll();
+          const delta=String(evt.text||"");
+          streamedText+=delta;
+          typedSource=streamedText;
+          typeQueue();
         }else if(evt.type==="error"){
           throw new Error(evt.details||evt.error||"Streaming error");
         }
@@ -236,6 +254,7 @@ document.addEventListener("DOMContentLoaded", () => {
       }
       buffer+=decoder.decode();
       if(buffer.trim())handleEvent(buffer);
+      await flushTyping();
 
       target.classList.remove("streaming-caret");
       if(!streamedText)streamedText="No response.";
@@ -390,6 +409,97 @@ document.addEventListener("DOMContentLoaded", () => {
   $("#applyCode")?.addEventListener("click",()=>{if(!codeInput)return;const p=$("#codePreview")?.textContent||"";if(!p){toast("No AI code to apply");return}codeInput.value=p;$("#codeResult")?.setAttribute("hidden","");toast("Applied to editor — review and save/download")});
   $("#downloadCode")?.addEventListener("click",()=>{const name=$("#codeFileName")?.value||"app.js",blob=new Blob([codeInput?.value||""],{type:"text/plain"}),a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=name;a.click();URL.revokeObjectURL(a.href)});
   $("#clearCode")?.addEventListener("click",()=>{if(codeInput)codeInput.value=""});
+
+  // Real Video Studio — Google Veo 3.1 long-running job
+  let videoImage = null;
+  const videoImageInput = $("#videoImageInput");
+  videoImageInput?.addEventListener("change", async e=>{
+    const f=e.target.files?.[0];
+    if(!f)return;
+    if(!f.type.startsWith("image/")){toast("Please choose an image");return;}
+    if(f.size>10*1024*1024){toast("Image is larger than 10 MB");return;}
+    const data=await new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=reject;r.readAsDataURL(f)});
+    videoImage={data,name:f.name,mimeType:f.type};
+    $("#videoImageName").textContent=f.name;
+    toast("Photo ready for Video");
+  });
+
+  async function generateVideo(){
+    const promptText=$("#videoPrompt")?.value.trim();
+    if(!promptText){toast("Video prompt ထည့်ပါ");return}
+    const btn=$("#generateVideo"), progress=$("#videoProgress"), result=$("#videoResult"), player=$("#generatedVideo"), download=$("#downloadVideo");
+    btn.disabled=true; result.hidden=true; progress.textContent="Starting Veo video job…";
+    try{
+      const r=await fetch(BACKEND_URL+"/api/video/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({prompt:promptText,aspectRatio:$("#videoRatio")?.value||"16:9",resolution:$("#videoResolution")?.value||"720p",image:videoImage?{data:videoImage.data,mimeType:videoImage.mimeType}:null})});
+      const d=await r.json().catch(()=>({}));
+      if(!r.ok)throw new Error(d.details||d.error||"Video generation request failed");
+      const operation=d.operation;
+      if(!operation)throw new Error("No video operation returned");
+      let done=false;
+      for(let i=0;i<90&&!done;i++){
+        await new Promise(r=>setTimeout(r,5000));
+        const s=await fetch(BACKEND_URL+"/api/video/status?name="+encodeURIComponent(operation));
+        const sd=await s.json().catch(()=>({}));
+        if(!s.ok)throw new Error(sd.details||sd.error||"Video status failed");
+        if(sd.done){
+          done=true;
+          if(!sd.videoUrl)throw new Error(sd.error||"Video completed without a file");
+          player.src=BACKEND_URL+sd.videoUrl;
+          download.href=BACKEND_URL+sd.videoUrl;
+          result.hidden=false;
+          progress.textContent="Video ready ✓";
+          player.load();
+          break;
+        }
+        progress.textContent=`Generating video… ${Math.min(99,Math.round((i+1)/90*100))}%`;
+      }
+      if(!done)throw new Error("Video is taking too long. The job may still be processing; try again later.");
+    }catch(e){progress.textContent="Video generation failed";toast(e.message||"Video generation failed")}
+    finally{btn.disabled=false}
+  }
+  $("#generateVideo")?.addEventListener("click",generateVideo);
+
+  // Project Code Agent — reads selected local project files, asks Gemini for coordinated edits, then downloads changed files for review.
+  let projectFiles={};
+  const projectFilesInput=$("#projectFilesInput");
+  $("#projectFilesButton")?.addEventListener("click",()=>projectFilesInput?.click());
+  projectFilesInput?.addEventListener("change",async e=>{
+    projectFiles={};
+    for(const f of Array.from(e.target.files||[])){
+      if(f.size>120*1024){toast(`${f.name} is too large`);continue}
+      projectFiles[f.name]=await f.text();
+    }
+    const names=Object.keys(projectFiles);
+    $("#projectAgentStatus").textContent=names.length?`${names.length} files loaded`:"No files";
+    $("#projectAgentPreview").textContent=names.join("\n");
+    $("#projectAgentResult").hidden=!names.length;
+    if(names.length)toast(`${names.length} project files ready for AI Agent`);
+  });
+
+  async function runProjectAgent(){
+    const instruction=$("#codeInstruction")?.value.trim();
+    if(!instruction){toast("AI ကိုဘာပြင်ရမလဲ ရေးပါ");return}
+    const names=Object.keys(projectFiles);
+    if(!names.length){toast("📁 Project Agent နဲ့ project files အရင်ရွေးပါ");return}
+    const statusEl=$("#projectAgentStatus"), previewEl=$("#projectAgentPreview"), box=$("#projectAgentResult");
+    statusEl.textContent="AI analyzing project…"; box.hidden=false;
+    try{
+      const r=await fetch(BACKEND_URL+"/api/code-agent",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({instruction,files:projectFiles})});
+      const d=await r.json().catch(()=>({}));
+      if(!r.ok)throw new Error(d.details||d.error||"Code Agent failed");
+      const changed=Object.keys(d.files||{});
+      statusEl.textContent=`${changed.length} file(s) changed — review required`;
+      previewEl.textContent=(d.summary||"Changes ready")+"\n\nChanged files:\n"+changed.join("\n")+"\n\nTests:\n"+(d.tests||[]).join("\n");
+      // Offer each changed file as a download, never silently overwrite production.
+      changed.forEach(name=>{
+        const blob=new Blob([d.files[name]],{type:"text/plain"});
+        const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=name;a.textContent=`Download ${name}`;a.className="secondary-button project-download";a.style.display="inline-flex";a.style.margin="8px 8px 0 0";box.appendChild(a);
+      });
+      toast("Project changes ready — review before replacing files");
+    }catch(e){statusEl.textContent="Agent failed";toast(e.message||"Code Agent failed")}
+  }
+  $("#runProjectAgent")?.addEventListener("click",runProjectAgent);
+  $("#codeInstruction")?.addEventListener("keydown",e=>{if((e.ctrlKey||e.metaKey)&&e.key==="Enter")runProjectAgent()});
 
   // Local history controls
   $("#clearHistory")?.addEventListener("click",()=>{localStorage.removeItem("sunspy_chats");renderHistory();toast("Chat history cleared")});

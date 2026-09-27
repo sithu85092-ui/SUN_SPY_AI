@@ -250,7 +250,7 @@
           <div class="tool coder-tool">
             <div class="tool-header">
               <h1>AI Coder</h1>
-              <p>Give SUN SPY AI your code and tell it what to change. Review and apply the result.</p>
+              <p>AI can edit one file or analyze a whole selected project. Changes are returned for review; production files are never silently overwritten.</p>
             </div>
 
             <div class="coder-grid">
@@ -275,8 +275,10 @@
             <div class="coder-actions">
               <button id="aiEditCode" class="primary-button" type="button">✨ AI Edit Code</button>
               <button id="downloadCode" class="secondary-button" type="button">Download File</button>
-              <button id="clearCode" class="secondary-button" type="button">Clear</button>
+              <button id="clearCode" class="secondary-button" type="button">Clear</button><button id="projectFilesButton" class="secondary-button" type="button">📁 Load Project</button><button id="runProjectAgent" class="primary-button" type="button">🤖 Run Project Agent</button><input id="projectFilesInput" type="file" multiple hidden accept=".html,.css,.js,.json,.md">
             </div>
+
+            <div id="projectAgentResult" class="code-result" hidden><div class="code-result-head"><strong>Project Agent</strong><span id="projectAgentStatus">Ready</span></div><pre id="projectAgentPreview" class="code-preview"></pre></div>
 
             <div id="codeResult" class="code-result" hidden>
               <div class="code-result-head">
@@ -367,11 +369,13 @@
 
           <div class="tool">
 
-            <div class="tool-header"><h1>AI Video Studio</h1><p>Text → Video, Photo → Video, effects, animation and up to 2-minute project planning.</p></div>
+            <div class="tool-header"><h1>AI Video Studio</h1><p>Real Text → Video / Photo → Video generation with Google Veo.</p></div>
             <div class="feature-grid"><button data-open-tool="video" type="button">Text → Video</button><button data-open-tool="video" type="button">Photo → Video</button><button data-open-tool="recap" type="button">Recap → Video</button><button data-open-tool="video" type="button">Cinematic Effects</button></div>
             <textarea class="tool-input" id="videoPrompt" placeholder="Describe your video…"></textarea>
-            <div class="feature-row"><select id="videoDuration"><option>10 sec</option><option>30 sec</option><option>60 sec</option><option selected>120 sec</option></select><select id="videoRatio"><option>9:16</option><option>16:9</option><option>1:1</option></select><button class="primary-button" data-open-tool="chat" type="button">Plan with AI</button></div>
-            <p class="provider-note">Generation providers are modular: connect a compatible image/video API in the backend. The UI is ready for provider adapters.</p>
+            <div class="feature-row"><select id="videoDuration"><option selected>8 sec</option></select><select id="videoRatio"><option>9:16</option><option selected>16:9</option></select><select id="videoResolution"><option selected>720p</option><option>1080p</option></select><button id="generateVideo" class="primary-button" type="button">🎬 Generate Video</button></div>
+            <div class="video-upload-row"><label class="secondary-button file-label">Photo → Video<input id="videoImageInput" type="file" accept="image/*" hidden></label><span id="videoImageName">No image selected</span></div>
+            <div id="videoProgress" class="provider-note">Ready — Veo generates an 8-second video per job.</div>
+            <div id="videoResult" class="video-result" hidden><video id="generatedVideo" controls playsinline></video><a id="downloadVideo" class="secondary-button" download="sun-spy-video.mp4">Download MP4</a></div>
 
           </div>
 
