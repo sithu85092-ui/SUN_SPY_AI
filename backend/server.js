@@ -470,12 +470,37 @@ ${instruction}
 Project files:${project}
 
 Return ONLY valid JSON with this shape: {"summary":"...","files":{"filename":"complete file contents"},"tests":["..."]}. Include only files that must change. Preserve existing features. Fix related syntax/runtime issues. Do not add secrets, malware, credential theft, destructive behavior, or unauthorized access. Do not use markdown fences.`;
-    const response = await ai.models.generateContent({
-      model: PRIMARY_MODEL, contents: prompt,
-      config: { responseMimeType: "application/json", systemInstruction: SYSTEM_INSTRUCTION + "\nYou are operating as a project code agent. Never claim files were written to production.", thinkingConfig: { thinkingLevel: "high" } }
+    const agentConfig = {
+      responseMimeType: "application/json",
+      systemInstruction: SYSTEM_INSTRUCTION + "\nYou are operating as a project code agent. Never claim files were written to production.",
+      thinkingConfig: { thinkingLevel: "high" },
+      maxOutputTokens: 65536
+    };
+
+    let response = await ai.models.generateContent({
+      model: PRIMARY_MODEL, contents: prompt, config: agentConfig
     });
     let parsed;
-    try { parsed = JSON.parse(response.text?.trim() || "{}"); } catch { return res.status(502).json({ error: "Code Agent returned invalid JSON", raw: response.text || "" }); }
+    const rawText = String(response.text || "").trim();
+    try {
+      parsed = JSON.parse(rawText || "{}");
+    } catch (firstError) {
+      // Large source files can make a single JSON response hit an output limit.
+      // Retry with a compact instruction rather than exposing a confusing parser error.
+      const compactPrompt = `You are editing a web project.\nUser request: ${instruction}\n\nReturn ONLY one valid JSON object with this exact shape: {"summary":"...","files":{"filename":"complete file contents"},"tests":["..."]}.\nOnly include the minimum files that must change. Keep the complete contents of each changed file. Do not use markdown fences. If a file does not need changes, omit it.\nProject files:\n${project}`;
+      try {
+        response = await ai.models.generateContent({
+          model: PRIMARY_MODEL, contents: compactPrompt,
+          config: { ...agentConfig, thinkingConfig: { thinkingLevel: "low" }, maxOutputTokens: 65536 }
+        });
+        parsed = JSON.parse(String(response.text || "").trim() || "{}");
+      } catch (secondError) {
+        return res.status(502).json({
+          error: "Code Agent response was incomplete. Please retry; large projects are processed in a smaller edit pass.",
+          retryable: true
+        });
+      }
+    }
     if (!parsed.files || typeof parsed.files !== "object") return res.status(502).json({ error: "Code Agent returned no files" });
     res.json({ ok: true, ...parsed });
   } catch (error) {
