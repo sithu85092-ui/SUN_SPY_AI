@@ -81,7 +81,7 @@
 
       <div class="sidebar-bottom">
 
-        <button class="bottom-item">
+        <button class="bottom-item" id="settingsButton" type="button">
           Settings
         </button>
 
@@ -185,21 +185,26 @@
 
 
             <div class="composer">
+              <div class="composer-top">
+                <div class="mode-switch" role="group" aria-label="AI mode">
+                  <button class="mode-button active" data-mode="fast" type="button">⚡ Fast</button>
+                  <button class="mode-button" data-mode="smart" type="button">🧠 Smart</button>
+                </div>
+                <span class="composer-status" id="composerStatus">Ready</span>
+              </div>
 
               <textarea
                 id="messageInput"
                 rows="1"
                 placeholder="Message SUN SPY AI..."
+                autocomplete="off"
               ></textarea>
 
               <div class="composer-bottom">
 
                 <div class="composer-tools">
-
-                  <button title="Attach">
-                    +
-                  </button>
-
+                  <button id="attachButton" title="Attach image" type="button">+</button>
+                  <input id="imageInput" type="file" accept="image/*" hidden>
                 </div>
 
                 <button
@@ -367,6 +372,48 @@
 
         </section>
 
+
+
+        <!-- SETTINGS / UI CUSTOMIZER -->
+        <section class="page" id="page-settings">
+          <div class="tool settings-tool">
+            <div class="tool-header">
+              <h1>Appearance</h1>
+              <p>Customize SUN SPY AI. You can also ask the AI to change the interface.</p>
+            </div>
+
+            <div class="settings-grid">
+              <label class="setting-card">
+                <span>Theme</span>
+                <select id="themeSelect">
+                  <option value="dark">Dark</option>
+                  <option value="light">Light</option>
+                  <option value="midnight">Midnight</option>
+                </select>
+              </label>
+              <label class="setting-card">
+                <span>Accent</span>
+                <input id="accentColor" type="color" value="#7c5cff">
+              </label>
+              <label class="setting-card">
+                <span>Font size</span>
+                <input id="fontSizeRange" type="range" min="13" max="18" value="14">
+              </label>
+              <label class="setting-card">
+                <span>Chat density</span>
+                <select id="densitySelect">
+                  <option value="comfortable">Comfortable</option>
+                  <option value="compact">Compact</option>
+                  <option value="spacious">Spacious</option>
+                </select>
+              </label>
+            </div>
+
+            <div class="appearance-actions">
+              <button class="primary-button" id="resetAppearance" type="button">Restore default</button>
+            </div>
+          </div>
+        </section>
 
         <!-- RECAP -->
         <section class="page" id="page-recap">
