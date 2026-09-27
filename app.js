@@ -91,16 +91,12 @@ document.addEventListener("DOMContentLoaded", () => {
   }
   function showTyping(){const el=document.createElement("div");el.className="message ai typing-message";el.innerHTML=`<div class="message-avatar">SS</div><div class="message-body"><div class="message-name">SUN SPY AI</div><div class="typing-dots"><i></i><i></i><i></i></div></div>`;messages.appendChild(el);scroll();return el}
 
-  async function typeText(el,text){
-    typingCancelled=false; const target=el.querySelector(".message-text"); target.classList.add("typing-caret");
-    for(let i=0;i<text.length;i++){
-      if(typingCancelled) break;
-      target.innerHTML=formatText(text.slice(0,i+1));
-      if(i%3===0) scroll();
-      await new Promise(r=>setTimeout(r, mode==="smart"?7:4));
-    }
-    target.classList.remove("typing-caret");scroll();
+  function setAIText(el,text){
+    const target=el.querySelector(".message-text");
+    if(target) target.innerHTML=formatText(text);
+    scroll();
   }
+
 
   function clearComposer(){pendingImage=null;if(preview){preview.hidden=true;preview.innerHTML=""}if(imageInput)imageInput.value=""}
   async function renderPreview(file){
@@ -158,22 +154,111 @@ document.addEventListener("DOMContentLoaded", () => {
     const text=input?.value.trim()||"";
     if(!text && !pendingImage)return;
     if(abortController){toast("Already generating — Stop ကိုနှိပ်ပါ");return}
+
     const image=pendingImage;
     beginConversationUI();
-    input.value="";clearComposer();addUser(text,image);
-    conversation.push({role:"user",text:text||"Please analyze this image.",image:image||null});
-    const typing=showTyping();status.textContent="Thinking…";sendBtn.disabled=true;stopBtn.hidden=false;abortController=new AbortController();
+    input.value="";
+    clearComposer();
+    addUser(text,image);
+    conversation.push({role:"user",text:text||"Please analyze the uploaded image.",image:image||null});
+
+    const typing=showTyping();
+    status.textContent="Connecting…";
+    sendBtn.disabled=true;
+    stopBtn.hidden=false;
+    abortController=new AbortController();
+    let aiEl=null;
+    let streamedText="";
+
     try{
-      const body={message:text||"Please analyze the uploaded image.",mode,history:conversation.slice(-12).map(x=>({role:x.role,text:x.text})),image:image?{data:image.data.split(",")[1],mimeType:image.mimeType}:null};
-      const res=await fetch(BACKEND_URL+"/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body),signal:abortController.signal});
-      const data=await res.json().catch(()=>({}));if(!res.ok){const raw=String(data.details||data.error||"Backend error");const busy=/503|UNAVAILABLE|high demand|temporar/i.test(raw);throw new Error(busy?"AI service is busy right now. SUN SPY AI retried automatically — please try again in a moment.":raw)}
-      typing.remove();if(data.uiCommand)applyUICommand(data.uiCommand);
-      const aiText=data.reply||"No response.";conversation.push({role:"model",text:aiText});
-      const el=addAI();await typeText(el,aiText);
-      speakIfEnabled(aiText);
-    }catch(e){typing.remove();if(e.name!=="AbortError"){const el=addAI();el.querySelector(".message-text").innerHTML=`<span class="error-text">${escapeHTML(e.message||"Something went wrong")}</span>`}else{const el=addAI();el.querySelector(".message-text").textContent="Generation stopped."}}
-    finally{abortController=null;stopBtn.hidden=true;sendBtn.disabled=false;status.textContent="Ready"}
+      const body={
+        message:text||"Please analyze the uploaded image.",
+        mode,
+        history:conversation.slice(-12).map(x=>({role:x.role,text:x.text})),
+        image:image?{data:image.data.split(",")[1],mimeType:image.mimeType}:null
+      };
+
+      const res=await fetch(BACKEND_URL+"/api/chat",{
+        method:"POST",
+        headers:{"Content-Type":"application/json","Accept":"text/event-stream"},
+        body:JSON.stringify(body),
+        signal:abortController.signal
+      });
+
+      if(!res.ok){
+        const data=await res.json().catch(()=>({}));
+        const raw=String(data.details||data.error||"Backend error");
+        const busy=/503|UNAVAILABLE|high demand|temporar/i.test(raw);
+        throw new Error(busy?"AI service is busy right now. SUN SPY AI retried automatically — please try again in a moment.":raw);
+      }
+      if(!res.body) throw new Error("Streaming is not supported by this browser/network");
+
+      typing.remove();
+      aiEl=addAI();
+      const target=aiEl.querySelector(".message-text");
+      target.classList.add("streaming-caret");
+      status.textContent="Streaming…";
+
+      const reader=res.body.getReader();
+      const decoder=new TextDecoder();
+      let buffer="";
+
+      const handleEvent=raw=>{
+        const lines=raw.split(/\r?\n/);
+        const dataLines=lines.filter(x=>x.startsWith("data:")).map(x=>x.slice(5).trim());
+        if(!dataLines.length)return;
+        let evt;
+        try{evt=JSON.parse(dataLines.join("\n"));}catch(_){return;}
+
+        if(evt.type==="meta"){
+          status.textContent=evt.mode==="smart"?"Smart streaming…":"Fast streaming…";
+        }else if(evt.type==="ui"){
+          applyUICommand(evt.command,image);
+        }else if(evt.type==="delta"){
+          streamedText+=String(evt.text||"");
+          target.innerHTML=formatText(streamedText);
+          scroll();
+        }else if(evt.type==="error"){
+          throw new Error(evt.details||evt.error||"Streaming error");
+        }
+      };
+
+      while(true){
+        const {value,done}=await reader.read();
+        if(done)break;
+        buffer+=decoder.decode(value,{stream:true});
+        let idx;
+        while((idx=buffer.indexOf("\n\n"))!==-1){
+          const raw=buffer.slice(0,idx);
+          buffer=buffer.slice(idx+2);
+          handleEvent(raw);
+        }
+      }
+      buffer+=decoder.decode();
+      if(buffer.trim())handleEvent(buffer);
+
+      target.classList.remove("streaming-caret");
+      if(!streamedText)streamedText="No response.";
+      conversation.push({role:"model",text:streamedText});
+      speakIfEnabled(streamedText);
+    }catch(e){
+      typing?.remove();
+      if(aiEl){aiEl.remove();}
+      if(e.name!=="AbortError"){
+        const el=addAI();
+        el.querySelector(".message-text").innerHTML=`<span class="error-text">${escapeHTML(e.message||"Something went wrong")}</span>`;
+      }else{
+        const el=addAI();
+        el.querySelector(".message-text").textContent=streamedText?`${streamedText}\n\n[Generation stopped.]`:"Generation stopped.";
+      }
+    }finally{
+      abortController=null;
+      stopBtn.hidden=true;
+      sendBtn.disabled=false;
+      status.textContent="Ready";
+    }
   }
+
   sendBtn?.addEventListener("click",sendMessage);
   stopBtn?.addEventListener("click",()=>{typingCancelled=true;abortController?.abort();speechSynthesis?.cancel();status.textContent="Stopped";stopBtn.hidden=true});
   // Keyboard contract: Enter = newline. Ctrl/Cmd + Enter = send.
@@ -222,27 +307,73 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Appearance and natural UI commands
   function applyAppearance(patch){const x={...getAppearance(),...patch};saveAppearance(x);document.documentElement.dataset.theme=x.theme;document.documentElement.style.setProperty("--accent",x.accent);document.documentElement.style.setProperty("--font-size",x.fontSize+"px");document.documentElement.dataset.density=x.density;if($("#themeSelect"))$("#themeSelect").value=x.theme;if($("#accentColor"))$("#accentColor").value=x.accent;if($("#fontSizeRange"))$("#fontSizeRange").value=x.fontSize;if($("#densitySelect"))$("#densitySelect").value=x.density}
-  function applyUICommand(c){
+  function applyUICommand(c,sourceImage=null){
     if(!c)return;
     if(c.action==="theme")applyAppearance({theme:c.value});
     if(c.action==="accent")applyAppearance({accent:c.value});
     if(c.action==="density")applyAppearance({density:c.value});
     if(c.action==="sidebar")setDrawer(c.value==="open");
     if(c.action==="font_size")applyAppearance({fontSize:Number(c.value)});
-    if(c.action==="ui_request"){
-      if(c.value==="add_button") toast("UI request understood — open Coder to add the exact button safely.");
-      if(c.value==="remove_button") toast("UI request understood — open Coder to remove the requested control safely.");
-      if(c.value==="set_text") toast("UI text change request understood.");
-      if(c.value==="background") toast("UI background request understood.");
-      if(c.value==="layout") toast("UI layout request understood.");
+
+    if(c.action!=="ui_request")return;
+
+    if(c.value==="background"){
+      if(sourceImage?.data){
+        applyBackgroundData(sourceImage.data);
+        toast("Background changed successfully");
+      }else{
+        toast("Upload a photo first, then ask me to use it as the background.");
+      }
+      return;
     }
+
+    if(c.value==="add_button")toast("I can prepare that button in AI Coder for review.");
+    if(c.value==="remove_button")toast("I can prepare that UI change in AI Coder for review.");
+    if(c.value==="set_text")toast("I can prepare that text change in AI Coder for review.");
+    if(c.value==="layout")toast("I can prepare that layout change in AI Coder for review.");
   }
+
   $("#themeSelect")?.addEventListener("change",e=>applyAppearance({theme:e.target.value}));$("#accentColor")?.addEventListener("input",e=>applyAppearance({accent:e.target.value}));$("#fontSizeRange")?.addEventListener("input",e=>applyAppearance({fontSize:Number(e.target.value)}));$("#densitySelect")?.addEventListener("change",e=>applyAppearance({density:e.target.value}));$("#resetAppearance")?.addEventListener("click",()=>applyAppearance(defaultAppearance));
 
-  // Background image/video, kept local unless the user supplies an online URL.
-  $("#backgroundUrlButton")?.addEventListener("click",()=>{const u=$("#backgroundUrl")?.value.trim();if(u){document.body.style.setProperty("--user-bg",`url("${u.replace(/"/g,'')}")`);document.body.classList.add("has-user-bg");localStorage.setItem("sunspy_bg_url",u);toast("Online background applied")}});
-  $("#backgroundFile")?.addEventListener("change",e=>{const f=e.target.files?.[0];if(!f)return;if(f.size>15*1024*1024){toast("Background video/image must be under 15 MB");return}const u=URL.createObjectURL(f);if(f.type.startsWith("video/")){let v=$("#bgVideo");if(!v){v=document.createElement("video");v.id="bgVideo";v.muted=true;v.autoplay=true;v.loop=true;v.playsInline=true;v.className="background-video";document.body.prepend(v)}v.src=u;document.body.classList.add("has-bg-video")}else{document.body.style.setProperty("--user-bg",`url("${u}")`);document.body.classList.add("has-user-bg")}});
-  const oldBg=localStorage.getItem("sunspy_bg_url");if(oldBg){document.body.style.setProperty("--user-bg",`url("${oldBg}")`);document.body.classList.add("has-user-bg")}
+  // Background image/video. Uploaded images are persisted locally in IndexedDB.
+  const BG_DB="sunspy_background_v1", BG_STORE="assets";
+  function bgDB(){return new Promise((resolve,reject)=>{const r=indexedDB.open(BG_DB,1);r.onupgradeneeded=()=>r.result.createObjectStore(BG_STORE);r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);})}
+  async function saveBG(key,value){try{const db=await bgDB();await new Promise((resolve,reject)=>{const tx=db.transaction(BG_STORE,"readwrite");tx.objectStore(BG_STORE).put(value,key);tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error)});db.close()}catch(e){console.warn("Background storage failed",e)}}
+  async function loadBG(key){try{const db=await bgDB();const value=await new Promise((resolve,reject)=>{const tx=db.transaction(BG_STORE,"readonly");const r=tx.objectStore(BG_STORE).get(key);r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)});db.close();return value}catch(e){return null}}
+  function applyBackgroundData(data){
+    if(!data)return;
+    document.body.style.setProperty("--user-bg",`url("${data.replace(/"/g,'')}")`);
+    document.body.classList.add("has-user-bg");
+    saveBG("image",data);
+  }
+  function applyBackgroundUrl(url){
+    if(!url)return;
+    document.body.style.setProperty("--user-bg",`url("${url.replace(/"/g,'')}")`);
+    document.body.classList.add("has-user-bg");
+    localStorage.setItem("sunspy_bg_url",url);
+  }
+  $("#backgroundUrlButton")?.addEventListener("click",()=>{const u=$("#backgroundUrl")?.value.trim();if(u){applyBackgroundUrl(u);toast("Online background applied")}});
+  $("#backgroundFile")?.addEventListener("change",async e=>{
+    const f=e.target.files?.[0];
+    if(!f)return;
+    if(f.size>15*1024*1024){toast("Background video/image must be under 15 MB");return}
+    if(f.type.startsWith("video/")){
+      const u=URL.createObjectURL(f);
+      let v=$("#bgVideo");
+      if(!v){v=document.createElement("video");v.id="bgVideo";v.muted=true;v.autoplay=true;v.loop=true;v.playsInline=true;v.className="background-video";document.body.prepend(v)}
+      v.src=u;document.body.classList.add("has-bg-video");
+    }else{
+      const reader=new FileReader();
+      reader.onload=()=>applyBackgroundData(String(reader.result));
+      reader.readAsDataURL(f);
+    }
+  });
+  (async()=>{
+    const saved=await loadBG("image");
+    if(saved)applyBackgroundData(saved);
+    else{const oldBg=localStorage.getItem("sunspy_bg_url");if(oldBg)applyBackgroundUrl(oldBg)}
+  })();
+
 
   // Feature cards: route users to tools and keep generation providers configurable.
   $$("[data-open-tool]").forEach(b=>b.addEventListener("click",()=>openPage(b.dataset.openTool)));

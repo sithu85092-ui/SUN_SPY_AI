@@ -1,16 +1,12 @@
-# SUN SPY AI v8 — Stable Chat
+# SUN SPY AI v9 TURBO
 
-This version keeps the v7 ChatGPT-style mobile UI and fixes transient Gemini 503 handling.
+- Gemini 3.8 Flash text chat with SSE streaming
+- Fast/Smart thinking modes
+- Automatic transient retry + 3.7 fallback
+- Real frontend execution for uploaded-photo background command
+- IndexedDB persistence for local background images
+- No fake character-by-character response animation
+- Gemini API key remains server-side
 
-### Backend resilience
-- Retries transient 429/500/502/503/504 failures with exponential backoff.
-- Falls back from `gemini-3.8-flash` to `gemini-3.7-flash` when the primary is temporarily unavailable.
-- Frontend shows a friendly message instead of raw Gemini JSON errors.
-
-### Render
-Root Directory: `backend`
-Build Command: `npm install`
-Start Command: `npm start`
-Environment Variable: `GEMINI_API_KEY`
-
-Never place the API key in GitHub Pages/frontend files.
+Backend: Render service `sun-spy-ai`
+Frontend: GitHub Pages
