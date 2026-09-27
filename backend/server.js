@@ -68,6 +68,13 @@ or one of the other allowed tokens above.
 Then write the normal friendly answer below it.
 If no UI change is requested, do not include a UI token.
 
+Important action truthfulness rules:
+- The model does not directly execute frontend actions. The frontend executes allow-listed commands.
+- For "change this photo to background" when the user uploaded an image in the same request, use [[UI:UI_SET_BACKGROUND]] and say it is being applied locally.
+- Do not claim that a background was changed to a trending image, a named movie/donghua character, or an online image unless an actual image URL/provider result is supplied to the application.
+- Do not claim buttons, layouts, text, files, or code were changed unless the frontend actually performed that operation.
+- Never invent successful execution just because a command was requested.
+
 For the first interaction in a new chat, greet the user briefly and introduce yourself as SUN SPY AI, built by SI THU KYAW, then mention the main things you can help with in one compact paragraph.
 
 For UI requests, prefer actionable intent. If the user asks to add/remove a button or change layout, use the allow-listed UI command and explain that the change is applied locally or can be prepared in the Code Agent. Never claim to have edited a production file unless the frontend actually applied it.
@@ -126,7 +133,7 @@ app.get("/", (req, res) => {
   res.json({
     service: "SUN SPY AI",
     status: "online",
-    version: "6.0.0",
+    version: "9.0.0",
     ai: Boolean(API_KEY),
     model: PRIMARY_MODEL
   });
@@ -142,97 +149,177 @@ app.get("/api/health", (req, res) => {
 });
 
 app.post("/api/chat", async (req, res) => {
-  try {
-    const message = req.body?.message;
-    const mode = req.body?.mode === "smart" ? "smart" : "fast";
-    const history = req.body?.history;
-    const image = req.body?.image || null;
+  const message = req.body?.message;
+  const mode = req.body?.mode === "smart" ? "smart" : "fast";
+  const history = req.body?.history;
+  const image = req.body?.image || null;
 
-    if (!message || typeof message !== "string") {
-      return res.status(400).json({ error: "Message is required" });
+  if (!message || typeof message !== "string") {
+    return res.status(400).json({ error: "Message is required" });
+  }
+  if (!API_KEY) return res.status(500).json({ error: "GEMINI_API_KEY is missing" });
+  if (!ai) return res.status(500).json({ error: "Gemini client is not initialized" });
+
+  const thinkingLevel = mode === "smart" ? "high" : "low";
+  const contents = buildContents(message, history, image);
+
+  console.log("User:", message);
+  console.log("Mode:", mode, "Thinking:", thinkingLevel, "Streaming: SSE");
+
+  const headersStarted = () => Boolean(res.headersSent);
+  let streamStarted = false;
+  let sentText = false;
+  let uiChecked = false;
+  let commandBuffer = "";
+
+  const sendEvent = (type, payload = {}) => {
+    if (res.writableEnded) return;
+    res.write(`data: ${JSON.stringify({ type, ...payload })}\n\n`);
+  };
+
+  const emitModelText = (text) => {
+    if (!text) return;
+    sentText = true;
+    sendEvent("delta", { text });
+  };
+
+  const emitUIAndText = (chunk) => {
+    if (!chunk) return;
+    if (uiChecked) return emitModelText(chunk);
+
+    commandBuffer += chunk;
+    const tokenMatch = commandBuffer.match(/^\s*\[\[UI:(THEME_DARK|THEME_LIGHT|THEME_MIDNIGHT|ACCENT_PURPLE|ACCENT_BLUE|ACCENT_GREEN|DENSITY_COMPACT|DENSITY_COMFORTABLE|DENSITY_SPACIOUS|UI_ADD_BUTTON|UI_REMOVE_BUTTON|UI_SET_TEXT|UI_SET_BACKGROUND|UI_SET_LAYOUT)\]\]\s*/);
+
+    if (tokenMatch) {
+      uiChecked = true;
+      const token = tokenMatch[1];
+      const map = {
+        THEME_DARK: { action: "theme", value: "dark" },
+        THEME_LIGHT: { action: "theme", value: "light" },
+        THEME_MIDNIGHT: { action: "theme", value: "midnight" },
+        ACCENT_PURPLE: { action: "accent", value: "#7c5cff" },
+        ACCENT_BLUE: { action: "accent", value: "#3b82f6" },
+        ACCENT_GREEN: { action: "accent", value: "#22c55e" },
+        DENSITY_COMPACT: { action: "density", value: "compact" },
+        DENSITY_COMFORTABLE: { action: "density", value: "comfortable" },
+        DENSITY_SPACIOUS: { action: "density", value: "spacious" },
+        UI_ADD_BUTTON: { action: "ui_request", value: "add_button" },
+        UI_REMOVE_BUTTON: { action: "ui_request", value: "remove_button" },
+        UI_SET_TEXT: { action: "ui_request", value: "set_text" },
+        UI_SET_BACKGROUND: { action: "ui_request", value: "background" },
+        UI_SET_LAYOUT: { action: "ui_request", value: "layout" }
+      };
+      sendEvent("ui", { command: map[token] });
+      const rest = commandBuffer.slice(tokenMatch[0].length);
+      commandBuffer = "";
+      if (rest) emitModelText(rest);
+      return;
     }
 
-    if (!API_KEY) {
-      return res.status(500).json({ error: "GEMINI_API_KEY is missing" });
+    // If this is clearly not a UI token, release buffered text immediately.
+    // If it starts like a UI token, wait until the complete token arrives.
+    if (!/^\s*\[\[UI:/.test(commandBuffer) || commandBuffer.length > 260) {
+      uiChecked = true;
+      const rest = commandBuffer;
+      commandBuffer = "";
+      emitModelText(rest);
     }
+  };
 
-    if (!ai) {
-      return res.status(500).json({ error: "Gemini client is not initialized" });
-    }
-
-    const thinkingLevel = mode === "smart" ? "high" : "low";
-
-    console.log("User:", message);
-    console.log("Mode:", mode, "Thinking:", thinkingLevel);
-
-    async function generateWithRetry(modelName, attempts) {
-      let lastError;
-      for (let attempt = 0; attempt < attempts; attempt++) {
-        try {
-          return await ai.models.generateContent({
-            model: modelName,
-            contents: buildContents(message, history, image),
-            config: {
-              systemInstruction: SYSTEM_INSTRUCTION,
-              thinkingConfig: { thinkingLevel }
-            }
-          });
-        } catch (err) {
-          lastError = err;
-          const status = Number(err?.status || err?.code || 0);
-          const messageText = String(err?.message || "");
-          const retryable = [429,500,502,503,504].includes(status) || /UNAVAILABLE|high demand|temporar/i.test(messageText);
-          if (!retryable || attempt === attempts - 1) throw err;
-          const delay = 700 * (2 ** attempt);
-          console.warn(`Temporary Gemini failure on ${modelName}; retrying in ${delay}ms`);
-          await new Promise(resolve => setTimeout(resolve, delay));
-        }
+  const makeStream = async (modelName) => {
+    const stream = await ai.models.generateContentStream({
+      model: modelName,
+      contents,
+      config: {
+        systemInstruction: SYSTEM_INSTRUCTION,
+        thinkingConfig: { thinkingLevel }
       }
-      throw lastError;
+    });
+
+    let gotChunk = false;
+    for await (const chunk of stream) {
+      const text = chunk?.text || "";
+      if (text) {
+        gotChunk = true;
+        emitUIAndText(text);
+      }
     }
+    return gotChunk;
+  };
+
+  const retryableError = (err) => {
+    const status = Number(err?.status || err?.code || 0);
+    const text = String(err?.message || "");
+    return [429, 500, 502, 503, 504].includes(status) || /UNAVAILABLE|high demand|temporar/i.test(text);
+  };
+
+  try {
+    // Open SSE only after request validation, so normal HTTP errors remain JSON.
+    res.status(200);
+    res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+    res.setHeader("Cache-Control", "no-cache, no-transform");
+    res.setHeader("Connection", "keep-alive");
+    res.setHeader("X-Accel-Buffering", "no");
+    if (typeof res.flushHeaders === "function") res.flushHeaders();
+
+    sendEvent("meta", { model: PRIMARY_MODEL, mode, streaming: true });
+    streamStarted = true;
 
     let usedModel = PRIMARY_MODEL;
-    let response;
-    try {
-      response = await generateWithRetry(PRIMARY_MODEL, 3);
-    } catch (primaryError) {
-      const status = Number(primaryError?.status || primaryError?.code || 0);
-      const messageText = String(primaryError?.message || "");
-      const fallback = [429,500,502,503,504].includes(status) || /UNAVAILABLE|high demand|temporar/i.test(messageText);
-      if (!fallback) throw primaryError;
-      console.warn(`Primary model unavailable; switching to ${FALLBACK_MODEL}`);
+    let completed = false;
+    let lastError = null;
+
+    for (let attempt = 0; attempt < 3 && !completed; attempt++) {
+      try {
+        await makeStream(PRIMARY_MODEL);
+        completed = true;
+      } catch (err) {
+        lastError = err;
+        if (!retryableError(err) || sentText || attempt === 2) break;
+        await new Promise(r => setTimeout(r, 500 * (2 ** attempt)));
+      }
+    }
+
+    if (!completed && retryableError(lastError) && !sentText) {
+      console.warn(`Primary stream unavailable; switching to ${FALLBACK_MODEL}`);
       usedModel = FALLBACK_MODEL;
-      response = await generateWithRetry(FALLBACK_MODEL, 2);
+      commandBuffer = "";
+      uiChecked = false;
+      for (let attempt = 0; attempt < 2 && !completed; attempt++) {
+        try {
+          await makeStream(FALLBACK_MODEL);
+          completed = true;
+        } catch (err) {
+          lastError = err;
+          if (!retryableError(err) || sentText || attempt === 1) break;
+          await new Promise(r => setTimeout(r, 500 * (2 ** attempt)));
+        }
+      }
     }
 
-    const rawReply = response.text;
+    if (!completed) throw lastError || new Error("Gemini stream ended unexpectedly");
 
-    if (!rawReply) {
-      return res.status(502).json({
-        error: "Gemini returned an empty response"
-      });
-    }
-
-    const parsed = parseUICommand(rawReply);
-
-    return res.json({
-      reply: parsed.reply,
-      uiCommand: parsed.uiCommand,
-      model: PRIMARY_MODEL,
-      mode
-    });
+    if (!uiChecked && commandBuffer) emitModelText(commandBuffer);
+    sendEvent("done", { model: usedModel });
+    res.end();
   } catch (error) {
-    console.error("========== GEMINI ERROR ==========");
+    console.error("========== GEMINI STREAM ERROR ==========");
     console.error(error);
     console.error("Message:", error?.message);
     console.error("Status:", error?.status);
     console.error("Code:", error?.code);
-    console.error("==================================");
+    console.error("=========================================");
 
-    return res.status(500).json({
-      error: "Gemini API error",
-      details: error?.message || String(error)
-    });
+    if (streamStarted) {
+      sendEvent("error", {
+        error: "Gemini API error",
+        details: error?.message || String(error),
+        partial: sentText
+      });
+      res.end();
+    } else {
+      return res.status(500).json({ error: "Gemini API error", details: error?.message || String(error) });
+    }
   }
 });
 
