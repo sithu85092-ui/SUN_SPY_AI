@@ -36,12 +36,44 @@ document.addEventListener("DOMContentLoaded", () => {
     $("#page-"+name)?.classList.add("active");
     document.querySelector(`.nav-item[data-page="${name}"]`)?.classList.add("active");
     if(headerTitle) headerTitle.textContent=pageTitles[name]||name;
-    sidebar?.classList.remove("open");
+    setDrawer?.(false);
   }
   $$(".nav-item").forEach(n=>n.addEventListener("click",()=>openPage(n.dataset.page)));
-  menuButton?.addEventListener("click",()=>sidebar?.classList.toggle("open"));
+  const drawerScrim = $("#drawerScrim"), drawerClose = $("#drawerClose");
+  function setDrawer(open){
+    sidebar?.classList.toggle("open", !!open);
+    drawerScrim?.classList.toggle("show", !!open);
+    menuButton?.setAttribute("aria-expanded", String(!!open));
+    document.body.classList.toggle("drawer-open", !!open);
+  }
+  menuButton?.addEventListener("click",()=>setDrawer(!sidebar?.classList.contains("open")));
+  drawerClose?.addEventListener("click",()=>setDrawer(false));
+  drawerScrim?.addEventListener("click",()=>setDrawer(false));
+  document.addEventListener("keydown",e=>{if(e.key==="Escape")setDrawer(false);});
+  let drawerTouchX=0, drawerTouchY=0;
+  document.addEventListener("touchstart",e=>{
+    if(!e.touches[0])return;
+    drawerTouchX=e.touches[0].clientX; drawerTouchY=e.touches[0].clientY;
+  },{passive:true});
+  document.addEventListener("touchend",e=>{
+    if(!e.changedTouches[0])return;
+    const x=e.changedTouches[0].clientX, y=e.changedTouches[0].clientY;
+    const dx=x-drawerTouchX, dy=y-drawerTouchY;
+    const mobile=window.matchMedia("(max-width:800px)").matches;
+    if(!mobile)return;
+    if(!sidebar?.classList.contains("open") && drawerTouchX<24 && dx>70 && Math.abs(dy)<70) setDrawer(true);
+    if(sidebar?.classList.contains("open") && dx<-70 && Math.abs(dy)<70) setDrawer(false);
+  },{passive:true});
   $("#settingsButton")?.addEventListener("click",()=>openPage("settings"));
   $("#historyButton")?.addEventListener("click",()=>openPage("chat"));
+  $("#headerSearch")?.addEventListener("click",()=>{
+    const q=prompt("Search your saved chats");
+    if(!q)return;
+    const chats=JSON.parse(localStorage.getItem("sunspy_chats")||"[]");
+    const hit=chats.find(c=>String(c.title||"").toLowerCase().includes(q.toLowerCase()) || c.messages?.some(m=>String(m.text||"").toLowerCase().includes(q.toLowerCase())));
+    if(hit){loadChat(hit.id);toast("Chat found");}else toast("No matching chat found");
+  });
+  $("#headerHelp")?.addEventListener("click",()=>toast("Use Enter for a new line • Ctrl/⌘+Enter to send"));
 
   function escapeHTML(v){return String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]))}
   function formatText(v){let h=escapeHTML(v);h=h.replace(/```([\s\S]*?)```/g,(_,c)=>`<pre class="code-block"><code>${c.trim()}</code></pre>`);h=h.replace(/\*\*(.*?)\*\*/g,"<strong>$1</strong>").replace(/`([^`]+)`/g,"<code>$1</code>");return h;}
@@ -99,15 +131,27 @@ document.addEventListener("DOMContentLoaded", () => {
     chats.unshift(item);localStorage.setItem("sunspy_chats",JSON.stringify(chats.slice(0,50)));renderHistory();
   }
   function renderHistory(){if(!historyList)return;const chats=JSON.parse(localStorage.getItem("sunspy_chats")||"[]");historyList.innerHTML=chats.map(c=>`<button class="history-row" data-id="${c.id}"><b>${escapeHTML(c.title)}</b><small>${new Date(c.createdAt).toLocaleString()}</small></button>`).join("");historyList.querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>loadChat(Number(b.dataset.id))))}
-  function loadChat(id){const c=JSON.parse(localStorage.getItem("sunspy_chats")||"[]").find(x=>x.id===id);if(!c)return;conversation=c.messages||[];messages.innerHTML="";conversation.forEach(m=>m.role==="user"?addUser(m.text,m.image):addAIStatic(m.text));openPage("chat")}
+  function loadChat(id){
+    const c=JSON.parse(localStorage.getItem("sunspy_chats")||"[]").find(x=>x.id===id);
+    if(!c)return;
+    conversation=c.messages||[];
+    messages.innerHTML="";
+    $("#welcomeHero")?.classList.add("hidden");
+    conversation.forEach(m=>m.role==="user"?addUser(m.text,m.image):addAIStatic(m.text));
+    openPage("chat");
+  }
   function addAIStatic(text){const el=addAI();el.querySelector(".message-text").innerHTML=formatText(text);scroll()}
   function clearMessages(){messages.innerHTML=""}
-  function startNewChat(){if(conversation.length)saveCurrentChat();conversation=[];clearMessages();clearComposer();welcomeGreeting(true);input?.focus();toast("New chat started")}
+  function startNewChat(){if(conversation.length)saveCurrentChat();conversation=[];clearMessages();clearComposer();$("#welcomeHero")?.classList.remove("hidden");welcomeGreeting(true);input?.focus();toast("New chat started")}
   newChat?.addEventListener("click",startNewChat);
 
   function welcomeGreeting(reset=false){
     if(!reset && conversation.length)return;
-    const el=addAI();el.querySelector(".message-text").innerHTML=`<div class="welcome-greeting"><b>မင်္ဂလာပါ 👋</b><p>ကျွန်တော် <strong>SUN SPY AI</strong> ပါ — <strong>SI THU KYAW</strong> က တည်ဆောက်ထားတဲ့ AI assistant ဖြစ်ပါတယ်။</p><p>Chat, Writer, Coder, Translate, Image, Voice, Video, Recap နဲ့ UI/code editing စတာတွေမှာ ကူညီပေးနိုင်ပါတယ်။</p><p>လိုချင်တာကို တိုက်ရိုက်ပြောပါ။ ဥပမာ <em>“Background ကိုပြောင်းပေး”</em>၊ <em>“ဒီ code ကိုပြင်ပေး”</em>၊ <em>“ဒီပုံကိုရှင်းပြ”</em> လို့ပြောနိုင်ပါတယ်။</p></div>`;
+    $("#welcomeHero")?.classList.remove("hidden");
+  }
+
+  function beginConversationUI(){
+    $("#welcomeHero")?.classList.add("hidden");
   }
 
   async function sendMessage(){
@@ -115,6 +159,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if(!text && !pendingImage)return;
     if(abortController){toast("Already generating — Stop ကိုနှိပ်ပါ");return}
     const image=pendingImage;
+    beginConversationUI();
     input.value="";clearComposer();addUser(text,image);
     conversation.push({role:"user",text:text||"Please analyze this image.",image:image||null});
     const typing=showTyping();composerStatus.textContent="Thinking…";sendBtn.disabled=true;stopBtn.hidden=false;abortController=new AbortController();
@@ -131,8 +176,17 @@ document.addEventListener("DOMContentLoaded", () => {
   }
   sendBtn?.addEventListener("click",sendMessage);
   stopBtn?.addEventListener("click",()=>{typingCancelled=true;abortController?.abort();speechSynthesis?.cancel();composerStatus.textContent="Stopped";stopBtn.hidden=true});
-  // Enter creates a new line. Ctrl/Cmd+Enter sends.
-  input?.addEventListener("keydown",e=>{if(e.key==="Enter"&&(e.ctrlKey||e.metaKey)){e.preventDefault();sendMessage()}});
+  // Keyboard contract: Enter = newline. Ctrl/Cmd + Enter = send.
+  input?.addEventListener("keydown",e=>{
+    if(e.key==="Enter" && (e.ctrlKey || e.metaKey)){
+      e.preventDefault();
+      sendMessage();
+    }
+  });
+  input?.addEventListener("input",()=>{
+    input.style.height="auto";
+    input.style.height=Math.min(input.scrollHeight,150)+"px";
+  });
 
   // Voice input / voice send / voice conversation
   function setupRecognition(){
@@ -146,7 +200,21 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Appearance and natural UI commands
   function applyAppearance(patch){const x={...getAppearance(),...patch};saveAppearance(x);document.documentElement.dataset.theme=x.theme;document.documentElement.style.setProperty("--accent",x.accent);document.documentElement.style.setProperty("--font-size",x.fontSize+"px");document.documentElement.dataset.density=x.density;if($("#themeSelect"))$("#themeSelect").value=x.theme;if($("#accentColor"))$("#accentColor").value=x.accent;if($("#fontSizeRange"))$("#fontSizeRange").value=x.fontSize;if($("#densitySelect"))$("#densitySelect").value=x.density}
-  function applyUICommand(c){if(!c)return;if(c.action==="theme")applyAppearance({theme:c.value});if(c.action==="accent")applyAppearance({accent:c.value});if(c.action==="density")applyAppearance({density:c.value});if(c.action==="sidebar")sidebar?.classList.toggle("open",c.value==="open");if(c.action==="font_size")applyAppearance({fontSize:Number(c.value)})}
+  function applyUICommand(c){
+    if(!c)return;
+    if(c.action==="theme")applyAppearance({theme:c.value});
+    if(c.action==="accent")applyAppearance({accent:c.value});
+    if(c.action==="density")applyAppearance({density:c.value});
+    if(c.action==="sidebar")setDrawer(c.value==="open");
+    if(c.action==="font_size")applyAppearance({fontSize:Number(c.value)});
+    if(c.action==="ui_request"){
+      if(c.value==="add_button") toast("UI request understood — open Coder to add the exact button safely.");
+      if(c.value==="remove_button") toast("UI request understood — open Coder to remove the requested control safely.");
+      if(c.value==="set_text") toast("UI text change request understood.");
+      if(c.value==="background") toast("UI background request understood.");
+      if(c.value==="layout") toast("UI layout request understood.");
+    }
+  }
   $("#themeSelect")?.addEventListener("change",e=>applyAppearance({theme:e.target.value}));$("#accentColor")?.addEventListener("input",e=>applyAppearance({accent:e.target.value}));$("#fontSizeRange")?.addEventListener("input",e=>applyAppearance({fontSize:Number(e.target.value)}));$("#densitySelect")?.addEventListener("change",e=>applyAppearance({density:e.target.value}));$("#resetAppearance")?.addEventListener("click",()=>applyAppearance(defaultAppearance));
 
   // Background image/video, kept local unless the user supplies an online URL.

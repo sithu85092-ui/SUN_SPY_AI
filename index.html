@@ -15,9 +15,11 @@
   <div class="app">
 
     <!-- Sidebar -->
-    <aside class="sidebar" id="sidebar">
+    <div class="drawer-scrim" id="drawerScrim" aria-hidden="true"></div>
+    <aside class="sidebar" id="sidebar" aria-label="SUN SPY AI navigation">
 
       <div class="sidebar-top">
+        <div class="mobile-drawer-head"><span class="drawer-title">SUN SPY AI</span><button class="drawer-close" id="drawerClose" type="button" aria-label="Close menu">×</button></div>
 
         <div class="brand">
           <div class="brand-mark">SS</div>
@@ -100,19 +102,15 @@
       <!-- Header -->
       <header class="header">
 
-        <button class="menu-button" id="menuButton">
-          ☰
-        </button>
+        <button class="menu-button" id="menuButton" type="button" aria-label="Open navigation" aria-expanded="false">☰</button>
 
         <div class="header-title">
           <strong id="headerTitle">Chat</strong>
         </div>
 
         <div class="header-right">
-
-          <button class="header-button">
-            ?
-          </button>
+          <button class="header-button" id="headerSearch" type="button" aria-label="Search chats">⌕</button>
+          <button class="header-button" id="headerHelp" type="button" aria-label="Help">?</button>
 
           <div class="profile">
             S
@@ -132,22 +130,18 @@
 
           <div class="chat-page">
 
-            <div class="welcome">
-
-              <div class="sun-logo">
-                SS
+            <div class="welcome" id="welcomeHero">
+              <div class="welcome-orb">
+                <div class="sun-logo">SS</div>
+                <span class="orb-ring"></span>
               </div>
-
-              <h1>
-                How can I help you?
-              </h1>
-
-              <p>
-                Ask anything, create something, or start a project.
-              </p>
-
+              <div class="eyebrow">SUN SPY AI · BY SI THU KYAW</div>
+              <h1>မင်္ဂလာပါ 👋<br><span>What can I help you create?</span></h1>
+              <p>Chat, code, images, voice, video, music and creative projects — all in one workspace.</p>
+              <div class="welcome-chips">
+                <span>⚡ Fast</span><span>🧠 Smart</span><span>🎨 Creative</span><span>🛠️ Code Agent</span>
+              </div>
             </div>
-
 
             <div class="suggestions">
 
@@ -182,6 +176,15 @@
 
             </div>
 
+
+            <div class="quick-toolbar" aria-label="Quick creation tools">
+              <button type="button" data-open-tool="image"><span>✦</span> Image</button>
+              <button type="button" data-open-tool="video"><span>▶</span> Video</button>
+              <button type="button" data-open-tool="music"><span>♫</span> Music</button>
+              <button type="button" data-open-tool="recap"><span>▣</span> Recap</button>
+              <button type="button" data-open-tool="coder"><span>&lt;/&gt;</span> Code</button>
+              <button type="button" data-open-tool="voice"><span>◉</span> Voice</button>
+            </div>
 
             <div class="composer">
               <div class="composer-top">
