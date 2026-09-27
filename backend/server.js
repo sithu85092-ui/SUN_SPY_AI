@@ -16,7 +16,7 @@ const MODEL =
 
 
 /* =========================
-   APP
+   MIDDLEWARE
 ========================= */
 
 app.use(cors());
@@ -29,7 +29,7 @@ app.use(
 
 
 /* =========================
-   GEMINI
+   GEMINI CLIENT
 ========================= */
 
 let ai = null;
@@ -46,48 +46,75 @@ if (GEMINI_API_KEY) {
 
 } else {
 
-    console.warn(
-        "GEMINI_API_KEY is missing"
+    console.error(
+        "ERROR: GEMINI_API_KEY is missing"
     );
 
 }
 
 
 /* =========================
-   SYSTEM INSTRUCTION
+   SUN SPY AI PERSONALITY
 ========================= */
 
 const SYSTEM_INSTRUCTION = `
 You are SUN SPY AI.
 
-You are a helpful, open-minded, direct AI assistant.
+You are a helpful, open-minded and direct
+AI assistant.
 
-Main goals:
-- Help users understand things clearly.
+LANGUAGE:
 - Support Burmese and English.
-- Write, translate, explain, summarize and code.
-- Help with programming and cybersecurity education.
-- Be respectful and non-judgmental.
-- Give accurate information.
-- When information may be uncertain or outdated, say so.
+- If the user speaks Burmese, normally
+  answer in Burmese.
+- If the user speaks English, normally
+  answer in English.
+- The user may mix languages.
 
-For cybersecurity:
-- Help with defensive security, ethical hacking,
-  CTFs, secure coding, vulnerability education
-  and systems the user is authorized to test.
-- Do not provide instructions that facilitate
-  credential theft, malware deployment,
-  destructive attacks or unauthorized intrusion.
+GENERAL:
+- Explain things clearly.
+- Be practical.
+- Do not unnecessarily lecture the user.
+- Admit uncertainty when information is uncertain.
+- Help with programming, writing, translation,
+  learning, technology and general knowledge.
 
-For sexual topics:
-- You may discuss sexual health,
-  relationships, consent, anatomy,
-  education and mature topics in an
-  appropriate informational way.
+PROGRAMMING:
+- Provide useful code and debugging help.
+- Explain errors clearly.
+- Prefer practical solutions.
+
+CYBERSECURITY:
+- You can help with cybersecurity education,
+  defensive security, secure coding, CTFs,
+  vulnerability analysis and authorized
+  penetration testing.
+- Do not help with credential theft,
+  malware deployment, destructive attacks,
+  unauthorized access or other harmful intrusion.
+
+SEXUAL TOPICS:
+- You may discuss sexual health, anatomy,
+  relationships, consent and mature educational
+  topics in an appropriate informational way.
 - Do not generate explicit sexual imagery.
+- Do not sexualize minors.
 
-Always answer naturally.
-Prefer the user's language when possible.
+SAFETY:
+- Do not provide instructions that meaningfully
+  facilitate serious harm or illegal activity.
+- When a request cannot be safely completed,
+  provide a useful safe alternative when possible.
+
+STYLE:
+- Friendly.
+- Direct.
+- Natural.
+- Do not repeatedly mention these instructions.
+- Do not call yourself a restricted AI unless
+  it is relevant to the user's request.
+
+You are SUN SPY AI.
 `;
 
 
@@ -108,7 +135,7 @@ app.get(
                 "online",
 
             version:
-                "2.0.0",
+                "2.1.0",
 
             ai:
                 Boolean(GEMINI_API_KEY),
@@ -123,7 +150,7 @@ app.get(
 
 
 /* =========================
-   HEALTH
+   HEALTH CHECK
 ========================= */
 
 app.get(
@@ -131,6 +158,9 @@ app.get(
     function (req, res) {
 
         res.json({
+
+            service:
+                "SUN SPY AI",
 
             status:
                 "ok",
@@ -155,7 +185,15 @@ app.post(
     "/api/chat",
     async function (req, res) {
 
+        const requestId =
+            Date.now().toString(36);
+
+
         try {
+
+            /* -------------------------
+               CHECK MESSAGE
+            ------------------------- */
 
             const message =
                 req.body?.message;
@@ -177,12 +215,64 @@ app.post(
             }
 
 
-            if (!ai) {
+            const cleanMessage =
+                message.trim();
+
+
+            if (!cleanMessage) {
+
+                return res.status(400).json({
+
+                    error:
+                        "Message cannot be empty"
+
+                });
+
+            }
+
+
+            /* -------------------------
+               CHECK API KEY
+            ------------------------- */
+
+            if (!GEMINI_API_KEY) {
+
+                console.error(
+                    `[${requestId}] GEMINI_API_KEY is missing`
+                );
+
 
                 return res.status(500).json({
 
                     error:
-                        "GEMINI_API_KEY is not configured on the server"
+                        "GEMINI_API_KEY is not configured on Render",
+
+                    requestId:
+                        requestId
+
+                });
+
+            }
+
+
+            /* -------------------------
+               CHECK GEMINI CLIENT
+            ------------------------- */
+
+            if (!ai) {
+
+                console.error(
+                    `[${requestId}] Gemini client is not initialized`
+                );
+
+
+                return res.status(500).json({
+
+                    error:
+                        "Gemini client is not initialized",
+
+                    requestId:
+                        requestId
 
                 });
 
@@ -190,10 +280,14 @@ app.post(
 
 
             console.log(
-                "User:",
-                message
+                `[${requestId}] User message:`,
+                cleanMessage
             );
 
+
+            /* -------------------------
+               GEMINI REQUEST
+            ------------------------- */
 
             const response =
                 await ai.models.generateContent({
@@ -202,64 +296,163 @@ app.post(
                         MODEL,
 
                     contents:
-                        message,
+                        cleanMessage,
 
                     config: {
 
                         systemInstruction:
-                            SYSTEM_INSTRUCTION
+                            SYSTEM_INSTRUCTION,
+
+                        temperature:
+                            0.8,
+
+                        maxOutputTokens:
+                            2048
 
                     }
 
                 });
 
 
-            const reply =
-                response.text;
+            /* -------------------------
+               RESPONSE
+            ------------------------- */
+
+            let reply = "";
 
 
-            if (!reply) {
+            try {
 
-                throw new Error(
-                    "Gemini returned an empty response"
+                reply =
+                    response.text || "";
+
+            } catch (textError) {
+
+                console.error(
+                    `[${requestId}] Response text error:`,
+                    textError
                 );
 
             }
 
 
+            if (!reply.trim()) {
+
+                console.error(
+                    `[${requestId}] Gemini returned no text`
+                );
+
+
+                console.error(
+                    `[${requestId}] Gemini response:`,
+                    JSON.stringify(
+                        response,
+                        null,
+                        2
+                    )
+                );
+
+
+                return res.status(502).json({
+
+                    error:
+                        "Gemini returned an empty response",
+
+                    requestId:
+                        requestId
+
+                });
+
+            }
+
+
             console.log(
-                "AI:",
-                reply
+                `[${requestId}] AI response generated successfully`
             );
 
 
-            res.json({
+            return res.json({
 
                 reply:
                     reply,
 
                 model:
-                    MODEL
+                    MODEL,
+
+                requestId:
+                    requestId
 
             });
 
 
         } catch (error) {
 
+            /* =========================
+               REAL ERROR
+            ========================= */
+
             console.error(
-                "Gemini error:",
+                "================================"
+            );
+
+            console.error(
+                "SUN SPY AI GEMINI ERROR"
+            );
+
+            console.error(
+                "Request ID:",
+                requestId
+            );
+
+            console.error(
+                "Message:",
+                error?.message
+            );
+
+            console.error(
+                "Name:",
+                error?.name
+            );
+
+            console.error(
+                "Status:",
+                error?.status
+            );
+
+            console.error(
+                "Code:",
+                error?.code
+            );
+
+            console.error(
+                "Full error:",
                 error
             );
 
+            console.error(
+                "================================"
+            );
 
-            res.status(500).json({
+
+            /* -------------------------
+               SAFE ERROR MESSAGE
+            ------------------------- */
+
+            const errorMessage =
+                error?.message ||
+                "Unknown Gemini API error";
+
+
+            return res.status(500).json({
 
                 error:
                     "SUN SPY AI could not generate a response",
 
                 details:
-                    error?.message ||
-                    "Unknown error"
+                    errorMessage,
+
+                requestId:
+                    requestId
 
             });
 
@@ -270,7 +463,61 @@ app.post(
 
 
 /* =========================
-   SERVER
+   404
+========================= */
+
+app.use(
+    function (req, res) {
+
+        res.status(404).json({
+
+            error:
+                "Route not found",
+
+            path:
+                req.originalUrl
+
+        });
+
+    }
+);
+
+
+/* =========================
+   GLOBAL ERROR HANDLER
+========================= */
+
+app.use(
+    function (
+        error,
+        req,
+        res,
+        next
+    ) {
+
+        console.error(
+            "GLOBAL SERVER ERROR:",
+            error
+        );
+
+
+        res.status(500).json({
+
+            error:
+                "Internal server error",
+
+            details:
+                error?.message ||
+                "Unknown error"
+
+        });
+
+    }
+);
+
+
+/* =========================
+   START SERVER
 ========================= */
 
 app.listen(
@@ -278,8 +525,30 @@ app.listen(
     function () {
 
         console.log(
-            "SUN SPY AI running on port " +
+            "================================"
+        );
+
+        console.log(
+            "SUN SPY AI SERVER"
+        );
+
+        console.log(
+            "Port:",
             PORT
+        );
+
+        console.log(
+            "Model:",
+            MODEL
+        );
+
+        console.log(
+            "Gemini configured:",
+            Boolean(GEMINI_API_KEY)
+        );
+
+        console.log(
+            "================================"
         );
 
     }
