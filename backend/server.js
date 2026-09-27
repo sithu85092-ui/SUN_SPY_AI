@@ -67,6 +67,10 @@ or one of the other allowed tokens above.
 Then write the normal friendly answer below it.
 If no UI change is requested, do not include a UI token.
 
+For the first interaction in a new chat, greet the user briefly and introduce yourself as SUN SPY AI, built by SI THU KYAW, then mention the main things you can help with in one compact paragraph.
+
+For UI requests, prefer actionable intent. If the user asks to add/remove a button or change layout, use the allow-listed UI command and explain that the change is applied locally or can be prepared in the Code Agent. Never claim to have edited a production file unless the frontend actually applied it.
+
 Be concise when a short answer is enough.
 `;
 
@@ -121,7 +125,7 @@ app.get("/", (req, res) => {
   res.json({
     service: "SUN SPY AI",
     status: "online",
-    version: "5.0.0",
+    version: "6.0.0",
     ai: Boolean(API_KEY),
     model: MODEL
   });
