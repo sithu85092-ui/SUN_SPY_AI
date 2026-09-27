@@ -1,6 +1,6 @@
 {
   "name": "sun-spy-ai-backend",
-  "version": "3.0.0",
+  "version": "5.0.0",
   "type": "module",
   "scripts": {
     "start": "node server.js"
