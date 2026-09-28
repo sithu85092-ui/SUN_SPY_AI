@@ -202,6 +202,19 @@ document.addEventListener("DOMContentLoaded", () => {
       const reader=res.body.getReader();
       const decoder=new TextDecoder();
       let buffer="";
+      let lastEventAt=Date.now();
+      let idleTimer=null;
+      const resetIdleWatchdog=()=>{
+        lastEventAt=Date.now();
+        clearTimeout(idleTimer);
+        idleTimer=setTimeout(()=>{
+          if(abortController){
+            status.textContent="Stream timeout — reconnecting…";
+            abortController.abort();
+          }
+        },45000);
+      };
+      resetIdleWatchdog();
       let typedSource="";
       let typedShown="";
       let typingActive=false;
@@ -227,6 +240,8 @@ document.addEventListener("DOMContentLoaded", () => {
         let evt;
         try{evt=JSON.parse(dataLines.join("\n"));}catch(_){return;}
 
+        lastEventAt=Date.now();
+        resetIdleWatchdog();
         if(evt.type==="meta"){
           status.textContent=evt.mode==="smart"?"Smart streaming…":"Fast streaming…";
         }else if(evt.type==="ui"){
@@ -254,6 +269,7 @@ document.addEventListener("DOMContentLoaded", () => {
       }
       buffer+=decoder.decode();
       if(buffer.trim())handleEvent(buffer);
+      clearTimeout(idleTimer);
       await flushTyping();
 
       target.classList.remove("streaming-caret");
@@ -274,12 +290,20 @@ document.addEventListener("DOMContentLoaded", () => {
       abortController=null;
       stopBtn.hidden=true;
       sendBtn.disabled=false;
+      if(input){ input.disabled=false; input.readOnly=false; input.style.pointerEvents="auto"; }
       status.textContent="Ready";
     }
   }
 
   sendBtn?.addEventListener("click",sendMessage);
-  stopBtn?.addEventListener("click",()=>{typingCancelled=true;abortController?.abort();speechSynthesis?.cancel();status.textContent="Stopped";stopBtn.hidden=true});
+  stopBtn?.addEventListener("click",()=>{
+    typingCancelled=true;
+    if(abortController)abortController.abort();
+    speechSynthesis?.cancel();
+    if(input){input.disabled=false;input.readOnly=false;input.style.pointerEvents="auto";input.focus();}
+    status.textContent="Stopped";
+    stopBtn.hidden=true;
+  });
   // Keyboard contract: Enter = newline. Ctrl/Cmd + Enter = send.
   input?.addEventListener("keydown",e=>{
     if(e.key==="Enter" && (e.ctrlKey || e.metaKey)){
