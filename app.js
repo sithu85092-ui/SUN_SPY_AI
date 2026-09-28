@@ -191,123 +191,54 @@ document.addEventListener("DOMContentLoaded", () => {
     let streamedText="";
 
     try{
+      // Stable chat transport: use a normal JSON response, then animate the
+      // completed answer quickly. This avoids SSE/proxy stalls on mobile/Render.
+      const startedAt=Date.now();
       const body={
         message:text||"Please analyze the uploaded image.",
         mode,
         history:conversation.slice(-13,-1).map(x=>({role:x.role,text:x.text})),
         image:image?{data:image.data.split(",")[1],mimeType:image.mimeType}:null
       };
-
+      status.textContent="AI is working…";
       const res=await fetch(BACKEND_URL+"/api/chat",{
         method:"POST",
-        headers:{"Content-Type":"application/json","Accept":"text/event-stream"},
+        headers:{"Content-Type":"application/json","Accept":"application/json"},
         body:JSON.stringify(body),
         signal:abortController.signal
       });
-
+      const data=await res.json().catch(()=>({}));
       if(!res.ok){
-        const data=await res.json().catch(()=>({}));
         const raw=String(data.details||data.error||"Backend error");
         const busy=/503|UNAVAILABLE|high demand|temporar/i.test(raw);
         throw new Error(busy?"AI service is busy right now. SUN SPY AI retried automatically — please try again in a moment.":raw);
       }
-      if(!res.body) throw new Error("Streaming is not supported by this browser/network");
-
+      streamedText=String(data.text||"");
+      const workedSeconds=Math.max(1,Math.ceil(Number(data.elapsedMs||Date.now()-startedAt)/1000));
+      if(!streamedText) throw new Error("SUN SPY AI returned an empty response.");
       typing.remove();
       aiEl=addAI();
       const target=aiEl.querySelector(".message-text");
       target.classList.add("streaming-caret");
-      status.textContent="Working for 1s";
-
-      const reader=res.body.getReader();
-      let serverFinished=false;
-      const decoder=new TextDecoder();
-      let buffer="";
-      let lastEventAt=Date.now();
-      let idleTimer=null;
-      const resetIdleWatchdog=()=>{
-        lastEventAt=Date.now();
-        clearTimeout(idleTimer);
-        idleTimer=setTimeout(()=>{
-          if(abortController){
-            status.textContent="Stream timeout — reconnecting…";
-            abortController.abort();
-          }
-        },45000);
-      };
-      resetIdleWatchdog();
-      let typedSource="";
-      let typedShown="";
-      let typingActive=false;
-      const typeQueue=async()=>{
-        if(typingActive)return;
-        typingActive=true;
-        while(typedShown.length<typedSource.length){
-          const remaining=typedSource.length-typedShown.length;
-          const step=remaining>80?3:remaining>25?2:1;
-          typedShown=typedSource.slice(0,typedShown.length+step);
-          target.innerHTML=formatText(typedShown);
+      status.textContent=`Worked for ${workedSeconds}s`;
+      let shown="";
+      const step=async()=>{
+        while(shown.length<streamedText.length){
+          const remaining=streamedText.length-shown.length;
+          const n=remaining>160?4:remaining>60?3:2;
+          shown=streamedText.slice(0,shown.length+n);
+          target.innerHTML=formatText(shown);
           scroll();
-          await new Promise(r=>setTimeout(r,8));
-        }
-        typingActive=false;
-      };
-      const flushTyping=async()=>{ while(typedShown.length<typedSource.length){ await typeQueue(); } };
-
-      const handleEvent=raw=>{
-        const lines=raw.split(/\r?\n/);
-        const dataLines=lines.filter(x=>x.startsWith("data:")).map(x=>x.slice(5).trim());
-        if(!dataLines.length)return;
-        let evt;
-        try{evt=JSON.parse(dataLines.join("\n"));}catch(_){return;}
-
-        lastEventAt=Date.now();
-        resetIdleWatchdog();
-        if(evt.type==="meta"){
-          status.textContent=evt.mode==="smart"?"Smart streaming…":"Fast streaming…";
-        }else if(evt.type==="ui"){
-          applyUICommand(evt.command,image);
-        }else if(evt.type==="delta"){
-          const delta=String(evt.text||"");
-          streamedText+=delta;
-          typedSource=streamedText;
-          typeQueue();
-        }else if(evt.type==="done" || evt.type==="finish"){
-          // Do not wait for a proxy/HTTP connection to close after the model
-          // has already finished. That was the main cause of the UI getting
-          // stuck on "Fast streaming…".
-          serverFinished=true;
-          status.textContent=`Worked for ${Math.max(1, Math.floor((Date.now()-workStartedAt)/1000))}s`;
-        }else if(evt.type==="error"){
-          throw new Error(evt.details||evt.error||"Streaming error");
+          await new Promise(r=>setTimeout(r,9));
+          if(abortController===null) break;
         }
       };
-
-      while(!serverFinished){
-        const {value,done}=await reader.read();
-        if(done)break;
-        buffer+=decoder.decode(value,{stream:true});
-        let idx;
-        while((idx=buffer.indexOf("\n\n"))!==-1){
-          const raw=buffer.slice(0,idx);
-          buffer=buffer.slice(idx+2);
-          handleEvent(raw);
-          if(serverFinished)break;
-        }
-      }
-      if(serverFinished){
-        try{await reader.cancel();}catch(_){ }
-      }else{
-        buffer+=decoder.decode();
-        if(buffer.trim())handleEvent(buffer);
-      }
-      clearTimeout(idleTimer);
-      await flushTyping();
-
+      await step();
       target.classList.remove("streaming-caret");
-      if(!streamedText)streamedText="SUN SPY AI did not receive any text from the model.";
       conversation.push({role:"model",text:streamedText});
       speakIfEnabled(streamedText);
+      // Keep the actual model time visible briefly, then return to Ready.
+      status.textContent=`Worked for ${workedSeconds}s`;
     }catch(e){
       typing?.remove();
       if(aiEl){aiEl.remove();}
