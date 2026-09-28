@@ -400,7 +400,8 @@ document.addEventListener("DOMContentLoaded", () => {
   $("#downloadCode")?.addEventListener("click",()=>{const name=$("#codeFileName")?.value||"app.js",blob=new Blob([codeInput?.value||""],{type:"text/plain"}),a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=name;a.click();URL.revokeObjectURL(a.href)});
   $("#clearCode")?.addEventListener("click",()=>{if(codeInput)codeInput.value=""});
 
-  // Real Video Studio — Google Veo 3.1 long-running job
+  // Free Video Studio — Wan2.2 through a public Hugging Face Gradio Space.
+  // This path does not use the paid Veo API.
   let videoImage = null;
   const videoImageInput = $("#videoImageInput");
   videoImageInput?.addEventListener("change", async e=>{
@@ -411,40 +412,44 @@ document.addEventListener("DOMContentLoaded", () => {
     const data=await new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=reject;r.readAsDataURL(f)});
     videoImage={data,name:f.name,mimeType:f.type};
     $("#videoImageName").textContent=f.name;
-    toast("Photo ready for Video");
+    toast("Photo selected — Free Wan2.2 mode is text-to-video; the photo is kept for future I2V providers");
   });
 
   async function generateVideo(){
     const promptText=$("#videoPrompt")?.value.trim();
     if(!promptText){toast("Video prompt ထည့်ပါ");return}
+    if(videoImage){
+      toast("Free mode currently generates from text. Remove the photo or use the prompt only.");
+    }
     const btn=$("#generateVideo"), progress=$("#videoProgress"), result=$("#videoResult"), player=$("#generatedVideo"), download=$("#downloadVideo");
-    btn.disabled=true; result.hidden=true; progress.textContent="Starting Veo video job…";
+    btn.disabled=true; result.hidden=true; progress.textContent="Starting FREE Wan2.2 job…";
     try{
-      const r=await fetch(BACKEND_URL+"/api/video/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({prompt:promptText,aspectRatio:$("#videoRatio")?.value||"16:9",resolution:$("#videoResolution")?.value||"720p",image:videoImage?{data:videoImage.data,mimeType:videoImage.mimeType}:null})});
+      const r=await fetch(BACKEND_URL+"/api/video/free-generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({prompt:promptText,aspectRatio:$("#videoRatio")?.value||"16:9"})});
       const d=await r.json().catch(()=>({}));
-      if(!r.ok)throw new Error(d.details||d.error||"Video generation request failed");
-      const operation=d.operation;
-      if(!operation)throw new Error("No video operation returned");
+      if(!r.ok)throw new Error(d.details||d.error||"Free video generation request failed");
+      const jobId=d.jobId;
+      if(!jobId)throw new Error("No free video job returned");
       let done=false;
-      for(let i=0;i<90&&!done;i++){
+      for(let i=0;i<120&&!done;i++){
         await new Promise(r=>setTimeout(r,5000));
-        const s=await fetch(BACKEND_URL+"/api/video/status?name="+encodeURIComponent(operation));
+        const s=await fetch(BACKEND_URL+"/api/video/free-status?jobId="+encodeURIComponent(jobId));
         const sd=await s.json().catch(()=>({}));
-        if(!s.ok)throw new Error(sd.details||sd.error||"Video status failed");
+        if(!s.ok)throw new Error(sd.details||sd.error||"Free video status failed");
         if(sd.done){
           done=true;
           if(!sd.videoUrl)throw new Error(sd.error||"Video completed without a file");
-          player.src=BACKEND_URL+sd.videoUrl;
-          download.href=BACKEND_URL+sd.videoUrl;
+          player.src=sd.videoUrl;
+          download.href=sd.videoUrl;
           result.hidden=false;
-          progress.textContent="Video ready ✓";
+          progress.textContent="Free video ready ✓";
           player.load();
           break;
         }
-        progress.textContent=`Generating video… ${Math.min(99,Math.round((i+1)/90*100))}%`;
+        const label=sd.status||"queued";
+        progress.textContent=`Free Wan2.2: ${label}… ${Math.min(99,Math.round((i+1)/120*100))}%`;
       }
-      if(!done)throw new Error("Video is taking too long. The job may still be processing; try again later.");
-    }catch(e){progress.textContent="Video generation failed";toast(e.message||"Video generation failed")}
+      if(!done)throw new Error("Free video is taking too long. The public GPU queue may still be busy; try again later.");
+    }catch(e){progress.textContent="Free video generation failed";toast(e.message||"Free video generation failed")}
     finally{btn.disabled=false}
   }
   $("#generateVideo")?.addEventListener("click",generateVideo);

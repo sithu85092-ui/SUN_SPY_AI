@@ -1,17 +1,22 @@
-SUN SPY AI v11 STABLE
+# SUN SPY AI — v12 FREE VIDEO
 
-Mobile-stable chat transport: JSON response + fast typing animation. This avoids SSE stalls while keeping the ChatGPT-like progressive display.
+SUN SPY AI chat/coding tools plus a free video path using a public Hugging Face Gradio Space running a Wan2.2-based model.
 
-Deploy frontend to GitHub Pages and backend/ to Render.
-# SUN SPY AI v9 TURBO
+## Free video
+- Text → Video through a public GPU queue.
+- No Veo API key is required for the free path.
+- Public queue, sleeping Space, rate limits and anonymous quota can affect availability.
+- Do not upload sensitive/private material to the public provider.
+- The existing paid Google Veo endpoints are still present but the Video Studio button uses the free path by default.
 
-- Gemini 3.8 Flash text chat with SSE streaming
-- Fast/Smart thinking modes
-- Automatic transient retry + 3.7 fallback
-- Real frontend execution for uploaded-photo background command
-- IndexedDB persistence for local background images
-- No fake character-by-character response animation
-- Gemini API key remains server-side
+## Backend
+- `backend/server.js`
+- `GEMINI_API_KEY` remains server-side for chat/coding.
+- Free video uses the public Gradio API at `mastap-wan22-remix-sfw-t2v.hf.space` and does not require a secret in SUN SPY AI.
 
-Backend: Render service `sun-spy-ai`
-Frontend: GitHub Pages
+## Run
+```bash
+cd backend
+npm install
+npm start
+```
