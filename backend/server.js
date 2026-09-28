@@ -245,6 +245,110 @@ function cleanBase64Data(value) {
 
 function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
 
+
+
+// FREE VIDEO PROVIDER — public Hugging Face Gradio Space running Wan2.2 Remix SFW.
+// No API key is stored or required here. Public GPU queues/limits can apply.
+const FREE_WAN_SPACE = "https://mastap-wan22-remix-sfw-t2v.hf.space";
+const freeWanJobs = new Map();
+
+function extractVideoUrl(value) {
+  const seen = new Set();
+  function walk(v) {
+    if (v == null) return null;
+    if (typeof v === "string") {
+      if (/^https?:\/\//i.test(v) && /\.(mp4|webm|mov)(\?|$)/i.test(v)) return v;
+      if (/^https?:\/\//i.test(v) && /gradio|hf\.space/i.test(v)) return v;
+      return null;
+    }
+    if (typeof v !== "object") return null;
+    if (seen.has(v)) return null;
+    seen.add(v);
+    for (const key of ["url","video","video_url","path","name","file","data"]) {
+      const hit = walk(v[key]);
+      if (hit) return hit;
+    }
+    if (Array.isArray(v)) for (const item of v) {
+      const hit = walk(item);
+      if (hit) return hit;
+    }
+    return null;
+  }
+  return walk(value);
+}
+
+function parseGradioSSE(text) {
+  const blocks = String(text || "").split(/\n\n+/);
+  let latest = null;
+  for (const block of blocks) {
+    const em = block.match(/^event:\s*(.+)$/m);
+    const dm = block.match(/^data:\s*([\s\S]*)$/m);
+    if (!em || !dm) continue;
+    let data = dm[1].trim();
+    try { data = JSON.parse(data); } catch {}
+    latest = { event: em[1].trim(), data };
+  }
+  return latest;
+}
+
+app.post("/api/video/free-generate", async (req, res) => {
+  try {
+    const prompt = typeof req.body?.prompt === "string" ? req.body.prompt.trim() : "";
+    if (!prompt) return res.status(400).json({ error: "Video prompt is required" });
+    if (prompt.length > 5000) return res.status(413).json({ error: "Prompt is too long" });
+
+    const r = await fetch(`${FREE_WAN_SPACE}/gradio_api/call/generate_video`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ data: [prompt] })
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok || !data.event_id) {
+      return res.status(r.status || 502).json({
+        error: "Free Wan2.2 queue is unavailable",
+        details: data?.error || data?.detail || "Public Space may be sleeping or busy"
+      });
+    }
+
+    const jobId = `wan-${Date.now()}-${Math.random().toString(36).slice(2,10)}`;
+    freeWanJobs.set(jobId, { eventId: data.event_id, createdAt: Date.now() });
+    res.json({ ok: true, jobId, provider: "Wan2.2 public Hugging Face Space", free: true });
+  } catch (error) {
+    console.error("FREE WAN GENERATE ERROR", error);
+    res.status(502).json({ error: "Free Wan2.2 service is unavailable", details: error?.message || String(error) });
+  }
+});
+
+app.get("/api/video/free-status", async (req, res) => {
+  try {
+    const jobId = String(req.query?.jobId || "");
+    const job = freeWanJobs.get(jobId);
+    if (!job) return res.status(404).json({ error: "Free video job not found or server restarted" });
+
+    const r = await fetch(`${FREE_WAN_SPACE}/gradio_api/call/generate_video/${encodeURIComponent(job.eventId)}`);
+    const body = await r.text();
+    if (!r.ok) return res.status(r.status).json({ error: "Free video status failed", details: body.slice(0,1000) });
+
+    const event = parseGradioSSE(body);
+    if (!event) return res.json({ done: false, status: "queued" });
+    if (event.event === "error") {
+      freeWanJobs.delete(jobId);
+      return res.status(502).json({ done: true, error: String(event.data || "Free Wan2.2 generation failed") });
+    }
+    if (event.event !== "complete") {
+      return res.json({ done: false, status: event.event === "generating" ? "generating" : "queued" });
+    }
+
+    const url = extractVideoUrl(event.data);
+    if (!url) return res.status(502).json({ done: true, error: "Wan2.2 completed but no video URL was returned" });
+    freeWanJobs.delete(jobId);
+    res.json({ done: true, videoUrl: url, provider: "Wan2.2", free: true });
+  } catch (error) {
+    console.error("FREE WAN STATUS ERROR", error);
+    res.status(502).json({ error: "Free Wan2.2 status error", details: error?.message || String(error) });
+  }
+});
+
 app.post("/api/video/generate", async (req, res) => {
   try {
     if (!API_KEY || !ai) return res.status(500).json({ error: "GEMINI_API_KEY is missing" });
