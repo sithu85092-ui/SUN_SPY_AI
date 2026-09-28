@@ -244,11 +244,15 @@ app.post("/api/chat", async (req, res) => {
     });
 
     let gotChunk = false;
+    let lastChunkAt = Date.now();
     for await (const chunk of stream) {
+      lastChunkAt = Date.now();
       const text = chunk?.text || "";
       if (text) {
         gotChunk = true;
         emitUIAndText(text);
+        // Keep proxies/load balancers aware that the SSE connection is active.
+        sendEvent("heartbeat", { t: lastChunkAt });
       }
     }
     return gotChunk;
@@ -267,6 +271,7 @@ app.post("/api/chat", async (req, res) => {
     res.setHeader("Cache-Control", "no-cache, no-transform");
     res.setHeader("Connection", "keep-alive");
     res.setHeader("X-Accel-Buffering", "no");
+    res.setHeader("X-Content-Type-Options", "nosniff");
     if (typeof res.flushHeaders === "function") res.flushHeaders();
 
     sendEvent("meta", { model: PRIMARY_MODEL, mode, streaming: true });
@@ -278,7 +283,10 @@ app.post("/api/chat", async (req, res) => {
 
     for (let attempt = 0; attempt < 3 && !completed; attempt++) {
       try {
-        await makeStream(PRIMARY_MODEL);
+        await Promise.race([
+          makeStream(PRIMARY_MODEL),
+          new Promise((_, reject) => setTimeout(() => reject(new Error("Gemini stream timeout after 120 seconds")), 120000))
+        ]);
         completed = true;
       } catch (err) {
         lastError = err;
@@ -294,7 +302,10 @@ app.post("/api/chat", async (req, res) => {
       uiChecked = false;
       for (let attempt = 0; attempt < 2 && !completed; attempt++) {
         try {
-          await makeStream(FALLBACK_MODEL);
+          await Promise.race([
+            makeStream(FALLBACK_MODEL),
+            new Promise((_, reject) => setTimeout(() => reject(new Error("Fallback Gemini stream timeout after 120 seconds")), 120000))
+          ]);
           completed = true;
         } catch (err) {
           lastError = err;
