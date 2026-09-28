@@ -20,6 +20,25 @@ document.addEventListener("DOMContentLoaded", () => {
   let typingCancelled = false;
   let recognition = null;
   let speaking = false;
+  let workTimer = null;
+  let workStartedAt = 0;
+
+  function startWorkTimer(){
+    clearInterval(workTimer);
+    workStartedAt = Date.now();
+    const tick = () => {
+      const seconds = Math.max(1, Math.floor((Date.now() - workStartedAt) / 1000));
+      if(status) status.textContent = `Worked for ${seconds}s`;
+    };
+    tick();
+    workTimer = setInterval(tick, 1000);
+  }
+
+  function stopWorkTimer(){
+    clearInterval(workTimer);
+    workTimer = null;
+    return Math.max(1, Math.floor((Date.now() - workStartedAt) / 1000));
+  }
 
   const defaultAppearance = {theme:"dark", accent:"#7c5cff", fontSize:16, density:"comfortable"};
   const getAppearance = () => JSON.parse(localStorage.getItem("sunspy_appearance") || JSON.stringify(defaultAppearance));
@@ -164,6 +183,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const typing=showTyping();
     status.textContent="Connecting…";
+    startWorkTimer();
     sendBtn.disabled=true;
     stopBtn.hidden=false;
     abortController=new AbortController();
@@ -197,9 +217,10 @@ document.addEventListener("DOMContentLoaded", () => {
       aiEl=addAI();
       const target=aiEl.querySelector(".message-text");
       target.classList.add("streaming-caret");
-      status.textContent="Streaming…";
+      status.textContent="Working for 1s";
 
       const reader=res.body.getReader();
+      let serverFinished=false;
       const decoder=new TextDecoder();
       let buffer="";
       let lastEventAt=Date.now();
@@ -251,12 +272,18 @@ document.addEventListener("DOMContentLoaded", () => {
           streamedText+=delta;
           typedSource=streamedText;
           typeQueue();
+        }else if(evt.type==="done" || evt.type==="finish"){
+          // Do not wait for a proxy/HTTP connection to close after the model
+          // has already finished. That was the main cause of the UI getting
+          // stuck on "Fast streaming…".
+          serverFinished=true;
+          status.textContent=`Worked for ${Math.max(1, Math.floor((Date.now()-workStartedAt)/1000))}s`;
         }else if(evt.type==="error"){
           throw new Error(evt.details||evt.error||"Streaming error");
         }
       };
 
-      while(true){
+      while(!serverFinished){
         const {value,done}=await reader.read();
         if(done)break;
         buffer+=decoder.decode(value,{stream:true});
@@ -265,15 +292,20 @@ document.addEventListener("DOMContentLoaded", () => {
           const raw=buffer.slice(0,idx);
           buffer=buffer.slice(idx+2);
           handleEvent(raw);
+          if(serverFinished)break;
         }
       }
-      buffer+=decoder.decode();
-      if(buffer.trim())handleEvent(buffer);
+      if(serverFinished){
+        try{await reader.cancel();}catch(_){ }
+      }else{
+        buffer+=decoder.decode();
+        if(buffer.trim())handleEvent(buffer);
+      }
       clearTimeout(idleTimer);
       await flushTyping();
 
       target.classList.remove("streaming-caret");
-      if(!streamedText)streamedText="No response.";
+      if(!streamedText)streamedText="SUN SPY AI did not receive any text from the model.";
       conversation.push({role:"model",text:streamedText});
       speakIfEnabled(streamedText);
     }catch(e){
@@ -287,11 +319,13 @@ document.addEventListener("DOMContentLoaded", () => {
         el.querySelector(".message-text").textContent=streamedText?`${streamedText}\n\n[Generation stopped.]`:"Generation stopped.";
       }
     }finally{
+      const workedSeconds=stopWorkTimer();
       abortController=null;
       stopBtn.hidden=true;
       sendBtn.disabled=false;
       if(input){ input.disabled=false; input.readOnly=false; input.style.pointerEvents="auto"; }
-      status.textContent="Ready";
+      status.textContent=`Worked for ${workedSeconds}s`;
+      setTimeout(()=>{ if(!abortController && status) status.textContent="Ready"; }, 1800);
     }
   }
 
@@ -301,7 +335,8 @@ document.addEventListener("DOMContentLoaded", () => {
     if(abortController)abortController.abort();
     speechSynthesis?.cancel();
     if(input){input.disabled=false;input.readOnly=false;input.style.pointerEvents="auto";input.focus();}
-    status.textContent="Stopped";
+    const workedSeconds=stopWorkTimer();
+    status.textContent=`Worked for ${workedSeconds}s · Stopped`;
     stopBtn.hidden=true;
   });
   // Keyboard contract: Enter = newline. Ctrl/Cmd + Enter = send.
