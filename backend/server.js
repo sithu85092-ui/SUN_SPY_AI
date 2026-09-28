@@ -140,7 +140,7 @@ app.get("/", (req, res) => {
   res.json({
     service: "SUN SPY AI",
     status: "online",
-    version: "9.0.0",
+    version: "11.0.0",
     ai: Boolean(API_KEY),
     model: PRIMARY_MODEL
   });
@@ -160,204 +160,44 @@ app.post("/api/chat", async (req, res) => {
   const mode = req.body?.mode === "smart" ? "smart" : "fast";
   const history = req.body?.history;
   const image = req.body?.image || null;
-
-  if (!message || typeof message !== "string") {
-    return res.status(400).json({ error: "Message is required" });
-  }
+  if (!message || typeof message !== "string") return res.status(400).json({ error: "Message is required" });
   if (!API_KEY) return res.status(500).json({ error: "GEMINI_API_KEY is missing" });
   if (!ai) return res.status(500).json({ error: "Gemini client is not initialized" });
 
   const thinkingLevel = mode === "smart" ? "high" : "low";
   const contents = buildContents(message, history, image);
-
-  console.log("User:", message);
-  console.log("Mode:", mode, "Thinking:", thinkingLevel, "Streaming: SSE");
-
-  const headersStarted = () => Boolean(res.headersSent);
-  let streamStarted = false;
-  let sentText = false;
-  let uiChecked = false;
-  let commandBuffer = "";
-
-  const sendEvent = (type, payload = {}) => {
-    if (res.writableEnded) return;
-    res.write(`data: ${JSON.stringify({ type, ...payload })}\n\n`);
-  };
-
-  const emitModelText = (text) => {
-    if (!text) return;
-    sentText = true;
-    sendEvent("delta", { text });
-  };
-
-  const emitUIAndText = (chunk) => {
-    if (!chunk) return;
-    if (uiChecked) return emitModelText(chunk);
-
-    commandBuffer += chunk;
-    const tokenMatch = commandBuffer.match(/^\s*\[\[UI:(THEME_DARK|THEME_LIGHT|THEME_MIDNIGHT|ACCENT_PURPLE|ACCENT_BLUE|ACCENT_GREEN|DENSITY_COMPACT|DENSITY_COMFORTABLE|DENSITY_SPACIOUS|UI_ADD_BUTTON|UI_REMOVE_BUTTON|UI_SET_TEXT|UI_SET_BACKGROUND|UI_SET_LAYOUT)\]\]\s*/);
-
-    if (tokenMatch) {
-      uiChecked = true;
-      const token = tokenMatch[1];
-      const map = {
-        THEME_DARK: { action: "theme", value: "dark" },
-        THEME_LIGHT: { action: "theme", value: "light" },
-        THEME_MIDNIGHT: { action: "theme", value: "midnight" },
-        ACCENT_PURPLE: { action: "accent", value: "#7c5cff" },
-        ACCENT_BLUE: { action: "accent", value: "#3b82f6" },
-        ACCENT_GREEN: { action: "accent", value: "#22c55e" },
-        DENSITY_COMPACT: { action: "density", value: "compact" },
-        DENSITY_COMFORTABLE: { action: "density", value: "comfortable" },
-        DENSITY_SPACIOUS: { action: "density", value: "spacious" },
-        UI_ADD_BUTTON: { action: "ui_request", value: "add_button" },
-        UI_REMOVE_BUTTON: { action: "ui_request", value: "remove_button" },
-        UI_SET_TEXT: { action: "ui_request", value: "set_text" },
-        UI_SET_BACKGROUND: { action: "ui_request", value: "background" },
-        UI_SET_LAYOUT: { action: "ui_request", value: "layout" }
-      };
-      sendEvent("ui", { command: map[token] });
-      const rest = commandBuffer.slice(tokenMatch[0].length);
-      commandBuffer = "";
-      if (rest) emitModelText(rest);
-      return;
-    }
-
-    // If this is clearly not a UI token, release buffered text immediately.
-    // If it starts like a UI token, wait until the complete token arrives.
-    if (!/^\s*\[\[UI:/.test(commandBuffer) || commandBuffer.length > 260) {
-      uiChecked = true;
-      const rest = commandBuffer;
-      commandBuffer = "";
-      emitModelText(rest);
-    }
-  };
-
-  const makeStream = async (modelName) => {
-    const stream = await ai.models.generateContentStream({
-      model: modelName,
-      contents,
-      config: {
-        systemInstruction: SYSTEM_INSTRUCTION,
-        thinkingConfig: { thinkingLevel }
-      }
-    });
-
-    let gotChunk = false;
-    let lastChunkAt = Date.now();
-    for await (const chunk of stream) {
-      lastChunkAt = Date.now();
-      const text = chunk?.text || "";
-      if (text) {
-        gotChunk = true;
-        emitUIAndText(text);
-      }
-      // Tell the browser that the connection is alive.
-      sendEvent("heartbeat", { t: lastChunkAt });
-
-      // Gemini can expose the terminal finish reason on the candidate before
-      // the async iterator closes. Exit immediately instead of waiting on a
-      // connection that can remain open behind a proxy.
-      const finishReason = chunk?.candidates?.[0]?.finishReason;
-      if (finishReason) {
-        sendEvent("finish", { reason: String(finishReason) });
-        break;
-      }
-    }
-    return gotChunk;
-  };
-
-  const retryableError = (err) => {
+  const startedAt = Date.now();
+  const retryable = err => {
     const status = Number(err?.status || err?.code || 0);
     const text = String(err?.message || "");
-    return [429, 500, 502, 503, 504].includes(status) || /UNAVAILABLE|high demand|temporar/i.test(text);
+    return [429,500,502,503,504].includes(status) || /UNAVAILABLE|high demand|temporar/i.test(text);
   };
-
-  let keepAlive = null;
-  try {
-    // Open SSE only after request validation, so normal HTTP errors remain JSON.
-    res.status(200);
-    res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
-    res.setHeader("Cache-Control", "no-cache, no-transform");
-    res.setHeader("Connection", "keep-alive");
-    res.setHeader("X-Accel-Buffering", "no");
-    res.setHeader("X-Content-Type-Options", "nosniff");
-    if (typeof res.flushHeaders === "function") res.flushHeaders();
-
-    sendEvent("meta", { model: PRIMARY_MODEL, mode, streaming: true });
-    streamStarted = true;
-    // Keep mobile browsers/proxies from considering the SSE connection idle
-    // while Gemini is thinking. The client also has an idle watchdog.
-    keepAlive = setInterval(() => {
-      if (!res.writableEnded) res.write(`: keepalive ${Date.now()}\n\n`);
-    }, 10000);
-
-    let usedModel = PRIMARY_MODEL;
-    let completed = false;
-    let lastError = null;
-
-    for (let attempt = 0; attempt < 3 && !completed; attempt++) {
+  let lastError = null;
+  let usedModel = PRIMARY_MODEL;
+  for (const modelName of [PRIMARY_MODEL, FALLBACK_MODEL]) {
+    const attempts = modelName === PRIMARY_MODEL ? 3 : 2;
+    for (let attempt=0; attempt<attempts; attempt++) {
       try {
-        await Promise.race([
-          makeStream(PRIMARY_MODEL),
-          new Promise((_, reject) => setTimeout(() => reject(new Error("Gemini stream timeout after 120 seconds")), 120000))
-        ]);
-        completed = true;
+        const response = await ai.models.generateContent({
+          model:modelName,
+          contents,
+          config:{ systemInstruction:SYSTEM_INSTRUCTION, thinkingConfig:{thinkingLevel} }
+        });
+        const text = String(response.text || "").trim();
+        if (!text) throw new Error("Gemini returned an empty response");
+        usedModel = modelName;
+        return res.json({ ok:true, text, model:usedModel, mode, elapsedMs:Date.now()-startedAt });
       } catch (err) {
-        lastError = err;
-        if (!retryableError(err) || sentText || attempt === 2) break;
-        await new Promise(r => setTimeout(r, 500 * (2 ** attempt)));
+        lastError=err;
+        if (!retryable(err) || attempt===attempts-1) break;
+        await new Promise(r=>setTimeout(r,500*(2**attempt)));
       }
     }
-
-    if (!completed && retryableError(lastError) && !sentText) {
-      console.warn(`Primary stream unavailable; switching to ${FALLBACK_MODEL}`);
-      usedModel = FALLBACK_MODEL;
-      commandBuffer = "";
-      uiChecked = false;
-      for (let attempt = 0; attempt < 2 && !completed; attempt++) {
-        try {
-          await Promise.race([
-            makeStream(FALLBACK_MODEL),
-            new Promise((_, reject) => setTimeout(() => reject(new Error("Fallback Gemini stream timeout after 120 seconds")), 120000))
-          ]);
-          completed = true;
-        } catch (err) {
-          lastError = err;
-          if (!retryableError(err) || sentText || attempt === 1) break;
-          await new Promise(r => setTimeout(r, 500 * (2 ** attempt)));
-        }
-      }
-    }
-
-    if (!completed) throw lastError || new Error("Gemini stream ended unexpectedly");
-
-    if (!uiChecked && commandBuffer) emitModelText(commandBuffer);
-    sendEvent("done", { model: usedModel });
-    clearInterval(keepAlive);
-    res.end();
-  } catch (error) {
-    console.error("========== GEMINI STREAM ERROR ==========");
-    console.error(error);
-    console.error("Message:", error?.message);
-    console.error("Status:", error?.status);
-    console.error("Code:", error?.code);
-    console.error("=========================================");
-
-    if (streamStarted) {
-      clearInterval(keepAlive);
-      sendEvent("error", {
-        error: "Gemini API error",
-        details: error?.message || String(error),
-        partial: sentText
-      });
-      res.end();
-    } else {
-      return res.status(500).json({ error: "Gemini API error", details: error?.message || String(error) });
-    }
+    if (!retryable(lastError)) break;
   }
+  console.error("CHAT ERROR", lastError);
+  res.status(502).json({ error:"Gemini API error", details:lastError?.message||String(lastError), elapsedMs:Date.now()-startedAt });
 });
-
 
 app.post("/api/code-edit", async (req, res) => {
   try {
