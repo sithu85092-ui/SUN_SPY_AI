@@ -251,8 +251,17 @@ app.post("/api/chat", async (req, res) => {
       if (text) {
         gotChunk = true;
         emitUIAndText(text);
-        // Keep proxies/load balancers aware that the SSE connection is active.
-        sendEvent("heartbeat", { t: lastChunkAt });
+      }
+      // Tell the browser that the connection is alive.
+      sendEvent("heartbeat", { t: lastChunkAt });
+
+      // Gemini can expose the terminal finish reason on the candidate before
+      // the async iterator closes. Exit immediately instead of waiting on a
+      // connection that can remain open behind a proxy.
+      const finishReason = chunk?.candidates?.[0]?.finishReason;
+      if (finishReason) {
+        sendEvent("finish", { reason: String(finishReason) });
+        break;
       }
     }
     return gotChunk;
@@ -264,6 +273,7 @@ app.post("/api/chat", async (req, res) => {
     return [429, 500, 502, 503, 504].includes(status) || /UNAVAILABLE|high demand|temporar/i.test(text);
   };
 
+  let keepAlive = null;
   try {
     // Open SSE only after request validation, so normal HTTP errors remain JSON.
     res.status(200);
@@ -276,6 +286,11 @@ app.post("/api/chat", async (req, res) => {
 
     sendEvent("meta", { model: PRIMARY_MODEL, mode, streaming: true });
     streamStarted = true;
+    // Keep mobile browsers/proxies from considering the SSE connection idle
+    // while Gemini is thinking. The client also has an idle watchdog.
+    keepAlive = setInterval(() => {
+      if (!res.writableEnded) res.write(`: keepalive ${Date.now()}\n\n`);
+    }, 10000);
 
     let usedModel = PRIMARY_MODEL;
     let completed = false;
@@ -319,6 +334,7 @@ app.post("/api/chat", async (req, res) => {
 
     if (!uiChecked && commandBuffer) emitModelText(commandBuffer);
     sendEvent("done", { model: usedModel });
+    clearInterval(keepAlive);
     res.end();
   } catch (error) {
     console.error("========== GEMINI STREAM ERROR ==========");
@@ -329,6 +345,7 @@ app.post("/api/chat", async (req, res) => {
     console.error("=========================================");
 
     if (streamStarted) {
+      clearInterval(keepAlive);
       sendEvent("error", {
         error: "Gemini API error",
         details: error?.message || String(error),
